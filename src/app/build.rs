@@ -119,10 +119,11 @@ fn main() {
         cmake_installed_lib_dir.display()
     );
 
-    let cmake_libraries = find_libraries_in_dir(&vcpkg_installed_lib_dir);
-    let vcpkg_libraries = find_libraries_in_dir(&cmake_installed_lib_dir);
+    let cmake_libraries = find_libraries_in_dir(&cmake_installed_lib_dir);
+    let vcpkg_libraries = find_libraries_in_dir(&vcpkg_installed_lib_dir);
 
     for lib in &cmake_libraries {
+        println!("cargo:warning=Linking to CMake lib: {}", lib);
         println!("cargo:rustc-link-lib=static={}", lib);
     }
 
@@ -130,21 +131,21 @@ fn main() {
         println!("cargo:rustc-link-lib=static={}", lib);
     }
 
-    // Configure cxx build: include C++ headers from the ccore source dir and vcpkg include
-    let ccore_include = workspace_root.join("src").join("ccore");
-    let mut bridge = cxx_build::bridge("src/lib.rs");
-    bridge.include(&ccore_include);
-    bridge.include(&vcpkg_installed_include_dir);
-    // Add the ccore cpp source so it's compiled into the bridge
-    let ccore_cpp = workspace_root.join("src").join("ccore").join("ccore.cpp");
-    bridge.file(ccore_cpp);
+    // // Configure cxx build: include C++ headers from the ccore source dir and vcpkg include
+    // let ccore_include = workspace_root.join("src").join("ccore");
+    // let mut bridge = cxx_build::bridge("src/lib.rs");
+    // bridge.include(&ccore_include);
+    // bridge.include(&vcpkg_installed_include_dir);
+    // // Add the ccore cpp source so it's compiled into the bridge
+    // let ccore_cpp = workspace_root.join("src").join("ccore").join("ccore.cpp");
+    // bridge.file(ccore_cpp);
 
-    // Compile the bridge (this will compile the cxx-generated glue and ccore.cpp)
-    bridge.compile("app-cxx-bridge");
+    // // Compile the bridge (this will compile the cxx-generated glue and ccore.cpp)
+    // bridge.compile("app-cxx-bridge");
 
-    // Re-run build if the C++ header/source changes
-    println!(
-        "cargo:rerun-if-changed={}",
-        workspace_root.join("src/ccore/ccore/ccore.hpp").display()
-    );
+    // // Re-run build if the C++ header/source changes
+    // println!(
+    //     "cargo:rerun-if-changed={}",
+    //     workspace_root.join("src/ccore/ccore/ccore.hpp").display()
+    // );
 }
