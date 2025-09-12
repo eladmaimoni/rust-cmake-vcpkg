@@ -31,6 +31,16 @@
             "configuration": "RelWithDebInfo"
         },
         {
+            "name": "vs2022r-install",
+            "configurePreset": "vs2022",
+            "jobs": 0,
+            "configuration": "RelWithDebInfo",
+            "targets": [
+                "ccore",
+                "install"
+            ]
+        },
+        {
             "name": "vs2022d",
             "configurePreset": "vs2022",
             "jobs": 0,

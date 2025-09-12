@@ -5,9 +5,11 @@ use std::process::Command;
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
 
+    let current_directory = env::current_dir().unwrap(); // the build script’s current directory is the source directory of the build script’s package
+
     // Determine workspace root (two levels up from this crate: .../src/app)
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let workspace_root = manifest_dir
+    // let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    let workspace_root = current_directory
         .parent()
         .unwrap()
         .parent()
