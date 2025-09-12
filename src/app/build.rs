@@ -71,8 +71,13 @@ fn find_libraries_in_dir(lib_dir: &Path) -> Vec<String> {
     if lib_dir.exists() {
         for entry in lib_dir.read_dir().unwrap() {
             let entry = entry.unwrap();
-            if entry.path().is_file() {
-                libs.push(entry.path().display().to_string());
+            let entry_path = entry.path();
+            // check if it's a file and has an extension ".lib" or ".a"
+            if entry_path.is_file()
+                && (entry_path.extension() == Some("lib".as_ref())
+                    || entry_path.extension() == Some("a".as_ref()))
+            {
+                libs.push(entry_path.display().to_string());
             }
         }
     }
@@ -108,8 +113,8 @@ fn main() {
 
     let vcpkg_installed_lib_dir = workspace_root.join(&build_details.vcpkg_installed_lib_dir);
     let cmake_installed_lib_dir = workspace_root.join(&build_details.cmake_installed_lib_dir);
-    let vcpkg_installed_include_dir =
-        workspace_root.join(&build_details.vcpkg_installed_include_dir);
+    // let vcpkg_installed_include_dir =
+    //     workspace_root.join(&build_details.vcpkg_installed_include_dir);
     println!(
         "cargo:rustc-link-search=native={}",
         vcpkg_installed_lib_dir.display()
@@ -128,6 +133,7 @@ fn main() {
     }
 
     for lib in &vcpkg_libraries {
+        println!("cargo:warning=Linking to vcpkg lib: {}", lib);
         println!("cargo:rustc-link-lib=static={}", lib);
     }
 
