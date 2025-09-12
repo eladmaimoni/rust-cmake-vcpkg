@@ -1,0 +1,4 @@
+
+[workspace]
+members = ["src/app", "src/rcore"]
+resolver = "3"
