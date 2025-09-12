@@ -36,19 +36,54 @@
             "jobs": 0,
             "configuration": "RelWithDebInfo",
             "targets": [
-                "ccore",
                 "install"
             ]
         },
+        
         {
             "name": "vs2022d",
             "configurePreset": "vs2022",
             "jobs": 0,
             "configuration": "Debug"
+        },
+                {
+            "name": "vs2022d-install",
+            "configurePreset": "vs2022",
+            "jobs": 0,
+            "configuration": "Debug",
+            "targets": [
+                "install"
+            ]
         }
     ],
     "testPresets": [
     ],
     "workflowPresets": [
+        {
+            "name": "windows-release-install",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "vs2022"
+                },
+                {
+                    "type": "build",
+                    "name": "vs2022r-install"
+                }
+            ]
+        },
+        {
+            "name": "windows-debug-install",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "vs2022"
+                },
+                {
+                    "type": "build",
+                    "name": "vs2022d-install"
+                }
+            ]
+        }
     ]
 }

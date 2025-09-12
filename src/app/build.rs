@@ -1,10 +1,57 @@
 use std::env;
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 
-fn main() {
-    println!("cargo:rerun-if-changed=build.rs");
+const CMAKE_INSTALLED_DIR: &str = "installed";
+const VCPKG_INSTALLED_DIR: &str = "vcpkg_installed";
 
+#[derive(Debug)]
+struct BuildDetails {
+    /// The CMake preset to use for this build (e.g. "vs2022r-install")
+    cmake_preset_workflow: &'static str,
+    vcpkg_installed_include_dir: PathBuf,
+    vcpkg_installed_lib_dir: PathBuf,
+    cmake_installed_include_dir: PathBuf,
+    cmake_installed_lib_dir: PathBuf,
+}
+
+fn deduce_build_details(target_os: &str, target_arch: &str, build_profile: &str) -> BuildDetails {
+    match target_os {
+        "windows" => {
+            let vcpkg_triplet = match target_arch {
+                "x86_64" => "x64-windows-static-md",
+                _ => {
+                    panic!("Unsupported target architecture: {}", target_arch);
+                }
+            };
+
+            let (cmake_preset_workflow, cmake_lib_path, vcpkg_lib_path) = match build_profile {
+                "debug" => ("windows-debug-install", "lib/Debug", "debug/lib"),
+                "release" => ("windows-release-install", "lib/Release", "lib"),
+                _ => {
+                    panic!("Unsupported build profile: {}", build_profile);
+                }
+            };
+
+            let vcpkg_installed_triplet_path =
+                PathBuf::from(VCPKG_INSTALLED_DIR).join(vcpkg_triplet);
+
+            BuildDetails {
+                cmake_preset_workflow,
+                vcpkg_installed_include_dir: vcpkg_installed_triplet_path.join("include"),
+                vcpkg_installed_lib_dir: vcpkg_installed_triplet_path.join(vcpkg_lib_path),
+                cmake_installed_include_dir: PathBuf::from(CMAKE_INSTALLED_DIR).join("include"),
+                cmake_installed_lib_dir: PathBuf::from(CMAKE_INSTALLED_DIR).join(cmake_lib_path),
+            }
+        }
+        _ => {
+            panic!("Unsupported target OS: {}", target_os);
+        }
+    }
+}
+
+fn get_workspace_root() -> PathBuf {
     let current_directory = env::current_dir().unwrap(); // the build script’s current directory is the source directory of the build script’s package
 
     // Determine workspace root (two levels up from this crate: .../src/app)
@@ -16,10 +63,40 @@ fn main() {
         .unwrap()
         .to_path_buf();
 
-    // Run cmake configure and build for the vs2022 preset. This builds the ccore target.
-    // If the user already built the CMake project externally, these commands are fast/no-op.
+    workspace_root
+}
+
+fn find_libraries_in_dir(lib_dir: &Path) -> Vec<String> {
+    let mut libs = Vec::new();
+    if lib_dir.exists() {
+        for entry in lib_dir.read_dir().unwrap() {
+            let entry = entry.unwrap();
+            if entry.path().is_file() {
+                libs.push(entry.path().display().to_string());
+            }
+        }
+    }
+    libs
+}
+
+fn main() {
+    // let out_dir = env::var("OUT_DIR").unwrap();
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
+    let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
+    let build_profile = std::env::var("PROFILE").unwrap();
+
+    let build_details = deduce_build_details(&target_os, &target_arch, &build_profile);
+    let workspace_root = get_workspace_root();
+
+    println!(
+        "cargo:warning=Building for OS={target_os}, ARCH={target_arch}, PROFILE={build_profile}"
+    );
+
+    println!("cargo:rerun-if-changed=build.rs");
+
     let status = Command::new("cmake")
-        .arg("--preset=vs2022")
+        .arg("--workflow")
+        .arg(format!("--preset={}", build_details.cmake_preset_workflow))
         .current_dir(&workspace_root)
         .status()
         .expect("failed to run cmake configure");
@@ -27,70 +104,37 @@ fn main() {
         panic!("cmake configure failed");
     }
 
-    let status = Command::new("cmake")
-        .arg("--build")
-        .arg("--preset=vs2022r")
-        .arg("--target")
-        .arg("ccore")
-        .current_dir(&workspace_root)
-        .status()
-        .expect("failed to run cmake build");
-    if !status.success() {
-        panic!("cmake build failed");
-    }
+    println!("cargo:warning=Build details: {:#?}", build_details);
 
-    // Find which CMake config folder actually contains the built ccore.lib
-    let mut built_lib_dir = workspace_root
-        .join("build")
-        .join("vs2022")
-        .join("src")
-        .join("ccore");
-    let candidates = ["Debug", "RelWithDebInfo", "Release"];
-    let mut found = false;
-    for c in &candidates {
-        let p = built_lib_dir.join(c);
-        if p.join("ccore.lib").exists() {
-            built_lib_dir = p;
-            found = true;
-            break;
-        }
-    }
-    if !found {
-        // fallback: use Debug directory (may still exist)
-        built_lib_dir = workspace_root
-            .join("build")
-            .join("vs2022")
-            .join("src")
-            .join("ccore")
-            .join("Debug");
-    }
-
-    // We will build the ccore sources into the bridge rather than link the prebuilt library
-    // (this avoids potential ABI/linking mismatches). Keep the build tree discovery above
-    // for informational/debugging reasons.
+    let vcpkg_installed_lib_dir = workspace_root.join(&build_details.vcpkg_installed_lib_dir);
+    let cmake_installed_lib_dir = workspace_root.join(&build_details.cmake_installed_lib_dir);
+    let vcpkg_installed_include_dir =
+        workspace_root.join(&build_details.vcpkg_installed_include_dir);
     println!(
-        "cargo:warning=ccore built lib dir = {}",
-        built_lib_dir.display()
+        "cargo:rustc-link-search=native={}",
+        vcpkg_installed_lib_dir.display()
+    );
+    println!(
+        "cargo:rustc-link-search=native={}",
+        cmake_installed_lib_dir.display()
     );
 
-    // vcpkg-installed libraries (project includes a vcpkg_installed folder)
-    // Prefer the static-md triplet (exists in the repo) and add include/lib paths.
-    let vcpkg_root = workspace_root
-        .join("vcpkg_installed")
-        .join("x64-windows-static-md");
-    let vcpkg_include = vcpkg_root.join("include");
-    let vcpkg_lib = vcpkg_root.join("lib");
-    println!("cargo:rustc-link-search=native={}", vcpkg_lib.display());
-    // Link spdlog (vcpkg provides spdlog.lib)
-    println!("cargo:rustc-link-lib=static=spdlog");
-    // spdlog depends on fmt; link fmt as well
-    println!("cargo:rustc-link-lib=static=fmt");
+    let cmake_libraries = find_libraries_in_dir(&vcpkg_installed_lib_dir);
+    let vcpkg_libraries = find_libraries_in_dir(&cmake_installed_lib_dir);
+
+    for lib in &cmake_libraries {
+        println!("cargo:rustc-link-lib=static={}", lib);
+    }
+
+    for lib in &vcpkg_libraries {
+        println!("cargo:rustc-link-lib=static={}", lib);
+    }
 
     // Configure cxx build: include C++ headers from the ccore source dir and vcpkg include
-    let mut bridge = cxx_build::bridge("src/lib.rs");
     let ccore_include = workspace_root.join("src").join("ccore");
+    let mut bridge = cxx_build::bridge("src/lib.rs");
     bridge.include(&ccore_include);
-    bridge.include(&vcpkg_include);
+    bridge.include(&vcpkg_installed_include_dir);
     // Add the ccore cpp source so it's compiled into the bridge
     let ccore_cpp = workspace_root.join("src").join("ccore").join("ccore.cpp");
     bridge.file(ccore_cpp);
