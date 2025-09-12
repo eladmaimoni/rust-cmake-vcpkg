@@ -7,6 +7,7 @@ edition = "2024"
 cxx = "1.0.183"
 
 [build-dependencies]
+vcpkg = "0.2.15"
 cmake = "0.1.54"
 cxx-build = "1.0.183"
 rcore = { path = "../rcore" }

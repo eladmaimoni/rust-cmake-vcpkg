@@ -20,8 +20,6 @@
             ],
             "generator": "Visual Studio 17 2022",
             "cacheVariables": {
-                "WITH_ULTRA_API": "ON",
-                "WITH_ULTRA_CUDA": "ON"
             }
         }
     ],
