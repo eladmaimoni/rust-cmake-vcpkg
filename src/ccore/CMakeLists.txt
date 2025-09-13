@@ -18,6 +18,8 @@ setup_target_for_install(
     ccore
 )
 
+generate_pkgconfig(ccore VERSION 1.2.3 DESCRIPTION "Cool Core Library")
+
 # target_include_directories(
 # ccore
 # PUBLIC

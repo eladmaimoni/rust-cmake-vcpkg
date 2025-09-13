@@ -131,3 +131,108 @@ function(setup_target_for_install
     setup_target_for_find_package(${target_name})
     setup_target_compiled_artifacts_for_install(${target_name})
 endfunction()
+
+# Usage:
+# get_link_dependencies(myTarget OUT_VAR)
+# message("Deps: ${OUT_VAR}")
+#
+function(get_link_dependencies target out_var)
+    set(_seen "")
+    set(_result "")
+
+    function(_collect_deps tgt)
+        # Prevent infinite recursion
+        if("${tgt}" IN_LIST _seen)
+            return()
+        endif()
+
+        list(APPEND _seen "${tgt}")
+
+        # Get this target's interface link libs
+        get_target_property(_libs ${tgt} INTERFACE_LINK_LIBRARIES)
+
+        if(NOT _libs)
+            return()
+        endif()
+
+        foreach(lib IN LISTS _libs)
+            # Skip generator expressions for simplicity
+            if(lib MATCHES "^[\\$<]")
+                continue()
+            endif()
+
+            list(APPEND _result "${lib}")
+
+            if(TARGET ${lib})
+                _collect_deps(${lib})
+            endif()
+        endforeach()
+    endfunction()
+
+    _collect_deps(${target})
+
+    # Return unique list
+    list(REMOVE_DUPLICATES _result)
+    set(${out_var} "${_result}" PARENT_SCOPE)
+endfunction()
+
+# Main: generate and install a pkg-config file for a CMake target
+#
+# Usage:
+# generate_pkgconfig(myTarget VERSION 1.0.0 DESCRIPTION "My Core Library")
+#
+function(generate_pkgconfig target)
+    set(options)
+    set(oneValueArgs VERSION DESCRIPTION)
+    cmake_parse_arguments(GPC "${options}" "${oneValueArgs}" "" ${ARGN})
+
+    if(NOT GPC_VERSION)
+        set(GPC_VERSION "0.1.0")
+    endif()
+
+    if(NOT GPC_DESCRIPTION)
+        set(GPC_DESCRIPTION "${target} library")
+    endif()
+
+    # Collect link deps
+    get_link_dependencies(${target} DEPS)
+
+    # Convert deps list into -lfoo style
+    set(LIBS_PRIVATE "")
+
+    foreach(dep IN LISTS DEPS)
+        if(TARGET ${dep})
+            # Use the target name as library name (you might need to refine)
+            set(LIBS_PRIVATE "${LIBS_PRIVATE} -l${dep}")
+        else()
+            # Raw string (e.g. -lm, -lpthread)
+            set(LIBS_PRIVATE "${LIBS_PRIVATE} ${dep}")
+        endif()
+    endforeach()
+
+    # Paths
+    set(prefix "${CMAKE_INSTALL_PREFIX}")
+    set(exec_prefix "\${prefix}")
+    set(libdir "\${exec_prefix}/${CMAKE_INSTALL_LIBDIR}")
+    set(includedir "\${prefix}/${CMAKE_INSTALL_INCLUDEDIR}")
+
+    # Create the .pc file
+    set(pc_file "${CMAKE_CURRENT_BINARY_DIR}/${target}.pc")
+    file(WRITE "${pc_file}" "prefix=${prefix}\n")
+    file(APPEND "${pc_file}" "exec_prefix=\${prefix}\n")
+    file(APPEND "${pc_file}" "libdir=\${exec_prefix}/${CMAKE_INSTALL_LIBDIR}\n")
+    file(APPEND "${pc_file}" "includedir=\${prefix}/${CMAKE_INSTALL_INCLUDEDIR}\n\n")
+    file(APPEND "${pc_file}" "Name: ${target}\n")
+    file(APPEND "${pc_file}" "Description: ${GPC_DESCRIPTION}\n")
+    file(APPEND "${pc_file}" "Version: ${GPC_VERSION}\n")
+    file(APPEND "${pc_file}" "Libs: -L\${libdir} -l${target}\n")
+
+    if(LIBS_PRIVATE)
+        file(APPEND "${pc_file}" "Libs.private:${LIBS_PRIVATE}\n")
+    endif()
+
+    file(APPEND "${pc_file}" "Cflags: -I\${includedir}\n")
+
+    # Install it
+    install(FILES "${pc_file}" DESTINATION "pkgconfig")
+endfunction()
