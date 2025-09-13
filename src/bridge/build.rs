@@ -38,14 +38,15 @@ fn deduce_build_details(target_os: &str, target_arch: &str, build_profile: &str)
                 // installation step places artifacts under lib/Release (see
                 // cmake/installation.cmake which maps RelWithDebInfo -> Release
                 // for install layout), so use lib/Release here.
-                "debug" => {
-                    // https://github.com/rust-lang/rust/issues/39016#issuecomment-2391095973
-                    // Don't link the default CRT
-                    // println!("cargo::rustc-link-arg=/nodefaultlib:msvcrt");
-                    // Link the debug CRT instead
-                    // println!("cargo::rustc-link-arg=/defaultlib:msvcrtd");
-                    ("windows-debug-install", "lib/Debug", "debug/lib")
-                }
+                // "debug" => {
+                //     // https://github.com/rust-lang/rust/issues/39016#issuecomment-2391095973
+                //     // Don't link the default CRT
+                //     // println!("cargo::rustc-link-arg=/nodefaultlib:msvcrt");
+                //     // Link the debug CRT instead
+                //     // println!("cargo::rustc-link-arg=/defaultlib:msvcrtd");
+                //     ("windows-debug-install", "lib/Debug", "debug/lib")
+                // }
+                "debug" => ("windows-release-install", "lib/Release", "lib"),
                 "release" => ("windows-release-install", "lib/Release", "lib"),
                 _ => {
                     panic!("Unsupported build profile: {}", build_profile);
