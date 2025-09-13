@@ -38,7 +38,14 @@ fn deduce_build_details(target_os: &str, target_arch: &str, build_profile: &str)
                 // installation step places artifacts under lib/Release (see
                 // cmake/installation.cmake which maps RelWithDebInfo -> Release
                 // for install layout), so use lib/Release here.
-                "debug" => ("windows-release-install", "lib/Release", "lib"),
+                "debug" => {
+                    // https://github.com/rust-lang/rust/issues/39016#issuecomment-2391095973
+                    // Don't link the default CRT
+                    // println!("cargo::rustc-link-arg=/nodefaultlib:msvcrt");
+                    // Link the debug CRT instead
+                    // println!("cargo::rustc-link-arg=/defaultlib:msvcrtd");
+                    ("windows-debug-install", "lib/Debug", "debug/lib")
+                }
                 "release" => ("windows-release-install", "lib/Release", "lib"),
                 _ => {
                     panic!("Unsupported build profile: {}", build_profile);
@@ -103,7 +110,7 @@ fn find_libraries_in_dir(lib_dir: &Path) -> Vec<String> {
 }
 
 fn main() {
-    // let out_dir = env::var("OUT_DIR").unwrap();
+    let out_dir = env::var("OUT_DIR").unwrap();
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
     let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
     let build_profile = std::env::var("PROFILE").unwrap();
@@ -112,7 +119,7 @@ fn main() {
     let workspace_root = get_workspace_root();
 
     println!(
-        "cargo:warning=Building for OS={target_os}, ARCH={target_arch}, PROFILE={build_profile}"
+        "cargo:warning=Building for OS={target_os}, ARCH={target_arch}, PROFILE={build_profile}, out_dir={out_dir}"
     );
 
     println!("cargo:rerun-if-changed=build.rs");
@@ -166,6 +173,10 @@ fn main() {
     let mut bridge = cxx_build::bridge("src/lib.rs");
     bridge.include(&ccore_include);
     bridge.include(&vcpkg_installed_include_dir);
+    // bridge.debug(true); // <-- important, picks /MDd in debug builds
+    // bridge.flag("/Zl");
+    // bridge.flag("/MDd"); // force dynamic debug runtime
+    bridge.compile("app-cxx-bridge");
 
     // On Windows/MSVC ensure the cxx bridge is compiled with the same CRT and
     // iterator-debug settings as the prebuilt C++ libraries produced by our
@@ -176,7 +187,6 @@ fn main() {
 
     // Compile only the cxx-generated glue. The ccore symbols come from the
     // prebuilt ccore.lib which we already tell rustc to link above.
-    bridge.compile("app-cxx-bridge");
 
     // The cxx build produces a static library named `cxxbridge1` (and a
     // corresponding import/static archive) in the build output directory. On
