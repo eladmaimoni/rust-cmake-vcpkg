@@ -18,8 +18,12 @@ setup_target_for_install(
     ccore
 )
 
-get_link_dependencies(ccore ccore_deps)
-message(STATUS "ccore_deps=${ccore_deps}")
+get_target_link_dependencies(ccore ccore_deps)
+get_library_names_and_paths(ccore_deps ccore_libs ccore_paths)
+
+message(STATUS "ZZZ: ccore_deps=${ccore_deps}")
+message(STATUS "ZZZ: ccore_libs=${ccore_libs}")
+message(STATUS "ZZZ: ccore_paths=${ccore_paths}")
 
 generate_pkgconfig(ccore VERSION 1.2.3 DESCRIPTION "Cool Core Library")
 

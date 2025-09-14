@@ -132,61 +132,6 @@ function(setup_target_for_install
     setup_target_compiled_artifacts_for_install(${target_name})
 endfunction()
 
-# Usage:
-# get_link_dependencies(myTarget OUT_VAR)
-# message("Deps: ${OUT_VAR}")
-#
-function(get_link_dependencies target out_var)
-    set(_seen "")
-    set(_result "")
-
-    macro(_collect_deps tgt)
-        # Prevent infinite recursion
-        if("${tgt}" IN_LIST _seen)
-        # already processed - do nothing
-        else()
-            list(APPEND _seen "${tgt}")
-
-            # Get this target's interface link libs and regular link libraries
-            get_target_property(_iface_libs ${tgt} INTERFACE_LINK_LIBRARIES)
-            get_target_property(_link_libs ${tgt} LINK_LIBRARIES)
-
-            set(_libs "")
-
-            if(_iface_libs)
-                list(APPEND _libs ${_iface_libs})
-            endif()
-
-            if(_link_libs)
-                list(APPEND _libs ${_link_libs})
-            endif()
-
-            # debug output removed
-            if(NOT _libs)
-            # nothing to collect
-            else()
-                foreach(lib IN LISTS _libs)
-                    # Skip generator expressions for simplicity
-                    if(lib MATCHES "^[\\$<]")
-                        continue()
-                    endif()
-
-                    list(APPEND _result "${lib}")
-
-                    if(TARGET ${lib})
-                        _collect_deps(${lib})
-                    endif()
-                endforeach()
-            endif()
-        endif()
-    endmacro()
-
-    _collect_deps(${target})
-
-    # Return unique list
-    list(REMOVE_DUPLICATES _result)
-    set(${out_var} "${_result}" PARENT_SCOPE)
-endfunction()
 
 function(get_vcpkg_lib_and_include_dirs out_lib_dir out_include_dir)
     # if vcpkg is being used, detect its installed dir and triplet 
@@ -262,7 +207,7 @@ function(generate_pkgconfig target)
 
     get_vcpkg_lib_and_include_dirs(vcpkg_libdir vcpkg_includedir)
     
-    get_link_dependencies(${target} link_dependencies) # Collect link deps
+    get_target_link_dependencies(${target} link_dependencies) # Collect link deps
 
     # We'll generate config-specific .pc files for multi-config generators (Debug and RelWithDebInfo)
     set(_configs Debug;RelWithDebInfo)
@@ -458,3 +403,4 @@ function(generate_pkgconfig target)
 
     install(FILES "${pc_file}" DESTINATION "pkgconfig")
 endfunction()
+
