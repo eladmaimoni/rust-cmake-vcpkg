@@ -12,6 +12,9 @@ include(cmake/installation.cmake)
 
 project(by2)
 
+# Use GNU install dirs for sensible defaults (CMAKE_INSTALL_LIBDIR / INCLUDEDIR)
+include(GNUInstallDirs)
+
 find_package(Eigen3 CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 

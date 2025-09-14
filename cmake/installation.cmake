@@ -188,37 +188,18 @@ function(get_link_dependencies target out_var)
     set(${out_var} "${_result}" PARENT_SCOPE)
 endfunction()
 
-# Main: generate and install a pkg-config file for a CMake target
-#
-# Usage:
-# generate_pkgconfig(myTarget VERSION 1.0.0 DESCRIPTION "My Core Library")
-#
-function(generate_pkgconfig target)
-    set(options)
-    set(oneValueArgs VERSION DESCRIPTION)
-    cmake_parse_arguments(GPC "${options}" "${oneValueArgs}" "" ${ARGN})
-
-    if(NOT GPC_VERSION)
-        set(GPC_VERSION "0.1.0")
-    endif()
-
-    if(NOT GPC_DESCRIPTION)
-        set(GPC_DESCRIPTION "${target} library")
-    endif()
-
-    # Use GNU install dirs for sensible defaults (CMAKE_INSTALL_LIBDIR / INCLUDEDIR)
-    include(GNUInstallDirs)
-
-    # Detect vcpkg installed dir and triplet (when available)
+function(get_vcpkg_lib_and_include_dirs out_lib_dir out_include_dir)
+    # if vcpkg is being used, detect its installed dir and triplet 
+    # (when available)
     if(DEFINED VCPKG_INSTALLED_DIR)
-        set(vcpkg_prefix "${VCPKG_INSTALLED_DIR}")
+        set(vcpkg_install_root "${VCPKG_INSTALLED_DIR}")
     elseif(DEFINED ENV{VCPKG_INSTALLED_DIR})
-        set(vcpkg_prefix "$ENV{VCPKG_INSTALLED_DIR}")
+        set(vcpkg_install_root "$ENV{VCPKG_INSTALLED_DIR}")
     else()
-        set(vcpkg_prefix "")
+        set(vcpkg_install_root "")
     endif()
 
-    if(vcpkg_prefix)
+    if(vcpkg_install_root)
         if(DEFINED VCPKG_TARGET_TRIPLET)
             set(_vcpkg_triplet "${VCPKG_TARGET_TRIPLET}")
         elseif(DEFINED ENV{VCPKG_DEFAULT_TRIPLET})
@@ -227,20 +208,61 @@ function(generate_pkgconfig target)
             set(_vcpkg_triplet "")
         endif()
 
+        # Determine the prefix (with or without triplet)
         if(_vcpkg_triplet)
-            set(vcpkg_libdir "${vcpkg_prefix}/${_vcpkg_triplet}/lib")
-            set(vcpkg_includedir "${vcpkg_prefix}/${_vcpkg_triplet}/include")
+            set(vcpkg_triplet_install_root "${vcpkg_install_root}/${_vcpkg_triplet}")
         else()
-            set(vcpkg_libdir "${vcpkg_prefix}/lib")
-            set(vcpkg_includedir "${vcpkg_prefix}/include")
+            set(vcpkg_triplet_install_root "${vcpkg_install_root}")
         endif()
+
+        # For debug configuration vcpkg places libs under debug/lib; use a generator expression
+        # so multi-config (MSVC) or single-config (Ninja) builds both resolve correctly.
+        # NOTE: include directory is the same for all configurations.
+        set(vcpkg_libdir "$<IF:$<CONFIG:Debug>,${vcpkg_triplet_install_root}/debug/lib,${vcpkg_triplet_install_root}/lib>")
+        set(vcpkg_includedir "${vcpkg_triplet_install_root}/include")
     else()
         set(vcpkg_libdir "")
         set(vcpkg_includedir "")
     endif()
 
-    # Collect link deps
-    get_link_dependencies(${target} DEPS)
+    set(${out_lib_dir} "${vcpkg_libdir}" PARENT_SCOPE)
+    set(${out_include_dir} "${vcpkg_includedir}" PARENT_SCOPE)
+endfunction()
+
+# Main: generate and install a pkg-config file for a CMake target
+#
+# Usage:
+# generate_pkgconfig(myTarget VERSION 1.0.0 DESCRIPTION "My Core Library")
+#
+function(generate_pkgconfig target)
+    # The names of boolean flags this function accepts (e.g., QUIET)
+    set(options)
+
+    # The names of keywords that must be followed by one value
+    set(oneValueArgs VERSION DESCRIPTION)
+
+    # The names of keywords that can be followed by multiple values
+    set(multiValueArgs)
+
+    cmake_parse_arguments(
+        arg # prefix for output variables
+        "${options}"
+        "${oneValueArgs}"
+        "${multiValueArgs}"
+        ${ARGN}
+    )
+
+    if(NOT arg_VERSION)
+        set(arg_VERSION "0.1.0")
+    endif()
+
+    if(NOT arg_DESCRIPTION)
+        set(arg_DESCRIPTION "${target} library")
+    endif()
+
+    get_vcpkg_lib_and_include_dirs(vcpkg_libdir vcpkg_includedir)
+    
+    get_link_dependencies(${target} link_dependencies) # Collect link deps
 
     # We'll generate config-specific .pc files for multi-config generators (Debug and RelWithDebInfo)
     set(_configs Debug;RelWithDebInfo)
@@ -249,7 +271,7 @@ function(generate_pkgconfig target)
         set(LIBS_PRIVATE "")
         set(_libdirs_added "")
 
-        foreach(dep IN LISTS DEPS)
+        foreach(dep IN LISTS link_dependencies)
             string(STRIP "${dep}" dep_trimmed)
 
             if(dep_trimmed MATCHES "^(-l|-L)")
@@ -303,15 +325,15 @@ function(generate_pkgconfig target)
                     # For this config, choose the vcpkg libdir variant (debug vs release)
                     set(_vcpkg_libdir_cfg "${vcpkg_libdir}")
 
-                    if(vcpkg_prefix)
+                    if(vcpkg_install_root)
                         if(_cfg STREQUAL Debug)
                             # debug libs live in .../debug/lib for vcpkg
-                            set(_vcpkg_libdir_cfg "${vcpkg_prefix}/${_vcpkg_triplet}/debug/lib")
+                            set(_vcpkg_libdir_cfg "${vcpkg_install_root}/${_vcpkg_triplet}/debug/lib")
                         else()
-                            set(_vcpkg_libdir_cfg "${vcpkg_prefix}/${_vcpkg_triplet}/lib")
+                            set(_vcpkg_libdir_cfg "${vcpkg_install_root}/${_vcpkg_triplet}/lib")
                         endif()
 
-                        string(REPLACE "\\" "/" _vcpkg_prefix_unix "${vcpkg_prefix}")
+                        string(REPLACE "\\" "/" _vcpkg_prefix_unix "${vcpkg_install_root}")
 
                         if(_libdir_unix MATCHES "^${_vcpkg_prefix_unix}")
                             set(_libdir_to_use "${_vcpkg_libdir_cfg}")
@@ -347,13 +369,13 @@ function(generate_pkgconfig target)
         set(includedir "${prefix}/${CMAKE_INSTALL_INCLUDEDIR}")
 
         # vcpkg dir variant for this config
-        if(vcpkg_prefix)
+        if(vcpkg_install_root)
             if(_cfg STREQUAL Debug)
-                set(vcpkg_libdir_cfg "${vcpkg_prefix}/${_vcpkg_triplet}/debug/lib")
-                set(vcpkg_includedir_cfg "${vcpkg_prefix}/${_vcpkg_triplet}/include")
+                set(vcpkg_libdir_cfg "${vcpkg_install_root}/${_vcpkg_triplet}/debug/lib")
+                set(vcpkg_includedir_cfg "${vcpkg_install_root}/${_vcpkg_triplet}/include")
             else()
-                set(vcpkg_libdir_cfg "${vcpkg_prefix}/${_vcpkg_triplet}/lib")
-                set(vcpkg_includedir_cfg "${vcpkg_prefix}/${_vcpkg_triplet}/include")
+                set(vcpkg_libdir_cfg "${vcpkg_install_root}/${_vcpkg_triplet}/lib")
+                set(vcpkg_includedir_cfg "${vcpkg_install_root}/${_vcpkg_triplet}/include")
             endif()
         else()
             set(vcpkg_libdir_cfg "")
@@ -366,9 +388,9 @@ function(generate_pkgconfig target)
         file(APPEND "${pc_file_cfg}" "libdir=${libdir_cfg}\n")
         file(APPEND "${pc_file_cfg}" "includedir=${includedir}\n\n")
 
-        if(vcpkg_prefix)
+        if(vcpkg_install_root)
             file(APPEND "${pc_file_cfg}" "# External dependencies from vcpkg\n")
-            file(APPEND "${pc_file_cfg}" "vcpkg_prefix=${vcpkg_prefix}\n")
+            file(APPEND "${pc_file_cfg}" "vcpkg_prefix=${vcpkg_install_root}\n")
             file(APPEND "${pc_file_cfg}" "vcpkg_libdir=${vcpkg_libdir_cfg}\n")
             file(APPEND "${pc_file_cfg}" "vcpkg_includedir=${vcpkg_includedir_cfg}\n\n")
         endif()
@@ -407,9 +429,9 @@ function(generate_pkgconfig target)
     file(APPEND "${pc_file}" "includedir=\${prefix}/${CMAKE_INSTALL_INCLUDEDIR}\n\n")
 
     # If vcpkg detected, emit its variables for consumers
-    if(vcpkg_prefix)
+    if(vcpkg_install_root)
         file(APPEND "${pc_file}" "# External dependencies from vcpkg\n")
-        file(APPEND "${pc_file}" "vcpkg_prefix=${vcpkg_prefix}\n")
+        file(APPEND "${pc_file}" "vcpkg_prefix=${vcpkg_install_root}\n")
         file(APPEND "${pc_file}" "vcpkg_libdir=${vcpkg_libdir}\n")
         file(APPEND "${pc_file}" "vcpkg_includedir=${vcpkg_includedir}\n\n")
     endif()

@@ -18,6 +18,9 @@ setup_target_for_install(
     ccore
 )
 
+get_link_dependencies(ccore ccore_deps)
+message(STATUS "ccore_deps=${ccore_deps}")
+
 generate_pkgconfig(ccore VERSION 1.2.3 DESCRIPTION "Cool Core Library")
 
 # target_include_directories(
