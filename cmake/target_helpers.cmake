@@ -1,10 +1,10 @@
 macro(set_source_group name)
-    set(${name} "${ARGN}")  
-    source_group(${name} FILES ${ARGN}) 
+    set(${name} "${ARGN}")
+    source_group(${name} FILES ${ARGN})
 endmacro(set_source_group)
 
 function(target_disable_console_but_use_normal_main target_name)
-    if (WIN32)
+    if(WIN32)
         # /ENTRY:mainCRTStartup keeps the same "main" function instead of requiring "WinMain"
         set(SUBSYSTEM_LINKER_OPTIONS /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup)
     else()
@@ -68,185 +68,240 @@ function(get_target_link_dependencies target out_var)
     set(${out_var} "${_result}" PARENT_SCOPE)
 endfunction()
 
+# Register base->debug/release mappings to allow generator expressions later
+function(_ulp_register_lib lib_name lib_dir)
+    if(lib_name STREQUAL "")
+        return()
+    endif()
+
+    # Determine base (strip trailing d if present and preceding char is alnum)
+    set(_base "${lib_name}")
+
+    if(_base MATCHES ".+[A-Za-z0-9_]d$")
+        string(REGEX REPLACE "d$" "" _maybe "${_base}")
+
+        # We'll treat this as debug variant (typical MSVC naming)
+        set(_base "${_maybe}")
+        set(_is_debug TRUE)
+    else()
+        set(_is_debug FALSE)
+    endif()
+
+    # Track list of bases
+    list(FIND _lib_bases "${_base}" _idx)
+
+    if(_idx EQUAL -1)
+        list(APPEND _lib_bases "${_base}")
+        set(_lib_bases "${_lib_bases}" PARENT_SCOPE)
+    endif()
+
+    # Normalize directory path for storage
+    file(TO_CMAKE_PATH "${lib_dir}" _norm_dir)
+
+    if(_is_debug)
+        set(_dbg_name_var "_base_${_base}_debug_name")
+        set(_dbg_dir_var "_base_${_base}_debug_dir")
+        set(${_dbg_name_var} "${lib_name}" PARENT_SCOPE)
+        set(${_dbg_dir_var} "${_norm_dir}" PARENT_SCOPE)
+    else()
+        set(_rel_name_var "_base_${_base}_release_name")
+        set(_rel_dir_var "_base_${_base}_release_dir")
+        set(${_rel_name_var} "${lib_name}" PARENT_SCOPE)
+        set(${_rel_dir_var} "${_norm_dir}" PARENT_SCOPE)
+    endif()
+endfunction()
+
+# append_to_list_if_not_found(listVar value)
+# Appends 'value' to the list variable named by 'listVar' only if it is not already present.
+# - listVar: Name of the list variable to modify (unquoted), e.g., my_list.
+# - value: Item to add; ignored if empty.
+# Writes back to the caller via PARENT_SCOPE.
+#
+# Example:
+#   set(my_libs "a;b")
+#   append_to_list_if_not_found(my_libs "b")  # unchanged: "a;b"
+#   append_to_list_if_not_found(my_libs "c")  # becomes: "a;b;c"
+function(append_to_list_if_not_found listVar value)
+    if(NOT "${value}" STREQUAL "")
+        # Get current contents of the target list variable.
+        set(_tmp_list "${${listVar}}")
+
+        # Check if value already exists.
+        list(FIND _tmp_list "${value}" _idx)
+
+        # Append if missing.
+        if(_idx EQUAL -1)
+            list(APPEND _tmp_list "${value}")
+        endif()
+        # Write back to caller's scope.
+        set(${listVar} "${_tmp_list}" PARENT_SCOPE)
+    endif()
+endfunction()
+
+# make_absolute_if_possible(input_path out_var)
+# Convert input_path to an absolute, normalized (forward-slash) path when possible.
+# Behavior:
+#   - If input_path is already absolute: normalize separators and return it.
+#   - Else if a matching path exists under CMAKE_CURRENT_SOURCE_DIR: resolve to absolute.
+#   - Else if a matching path exists under CMAKE_CURRENT_BINARY_DIR: resolve to absolute.
+#   - Else: leave the original relative path unchanged.
+# Params:
+#   - input_path: A path (absolute or relative).
+#   - out_var:   Name of the variable to set in the caller (unquoted).
+# Writes back via PARENT_SCOPE.
+#
+# Example:
+#   set(rel "include/mylib")
+#   make_absolute_if_possible("${rel}" ABS_OUT)  # Resolves if it exists under source or build dir.
+#   message(STATUS "Resolved: ${ABS_OUT}")
+function(make_absolute_if_possible input_path out_var)
+    # Already absolute: just normalize separators.
+    if(IS_ABSOLUTE "${input_path}")
+        file(TO_CMAKE_PATH "${input_path}" _np)
+        set(${out_var} "${_np}" PARENT_SCOPE)
+        return()
+    endif()
+
+    # Try to resolve relative to the current source/binary dirs.
+    set(_candidate "")
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${input_path}")
+        set(_candidate "${CMAKE_CURRENT_SOURCE_DIR}/${input_path}")
+    elseif(EXISTS "${CMAKE_CURRENT_BINARY_DIR}/${input_path}")
+        set(_candidate "${CMAKE_CURRENT_BINARY_DIR}/${input_path}")
+    endif()
+
+    if(NOT _candidate STREQUAL "")
+        get_filename_component(_abs "${_candidate}" ABSOLUTE)
+        file(TO_CMAKE_PATH "${_abs}" _np)
+        set(${out_var} "${_np}" PARENT_SCOPE)
+    else()
+        # Leave unresolved relative path as-is (preserve original behavior).
+        set(${out_var} "${input_path}" PARENT_SCOPE)
+    endif()
+endfunction()
 
 # Collect library filenames (-l names or actual library files) and library directories
 # from a list of dependency tokens (typically the result of get_link_dependencies).
 # Handles:
-#   - CMake targets (tries to resolve their IMPORTED / build artifacts)
-#   - -l<name> tokens
-#   - -L<path> tokens (adds to directory list only)
-#   - Absolute or relative paths to library files (*.a, *.so, *.dylib, *.lib)
+# - CMake targets (tries to resolve their IMPORTED / build artifacts)
+# - -l<name> tokens
+# - -L<path> tokens (adds to directory list only)
+# - Absolute or relative paths to library files (*.a, *.so, *.dylib, *.lib)
 # Outputs two parent-scope variables without duplicates:
-#   out_lib_names_var  -> list of library names (no duplicate, no path, no extension)
-#   out_lib_dirs_var   -> list of absolute directories containing libs (no duplicates)
+# out_lib_names_var  -> list of library names (no duplicate, no path, no extension)
+# out_lib_dirs_var   -> list of absolute directories containing libs (no duplicates)
 # Usage example:
-#   get_link_dependencies(myTarget deps)
-#   get_library_names_and_paths("${deps}" LIB_NAMES LIB_DIRS)
-#   message(STATUS "Lib names: ${LIB_NAMES}")
-#   message(STATUS "Lib dirs:  ${LIB_DIRS}")
+# get_link_dependencies(myTarget deps)
+# get_library_names_and_paths("${deps}" LIB_NAMES LIB_DIRS)
+# message(STATUS "Lib names: ${LIB_NAMES}")
+# message(STATUS "Lib dirs:  ${LIB_DIRS}")
 function(get_library_names_and_paths dependency_list out_lib_names_var out_lib_dirs_var)
     # Caller passes either:
-    #   get_library_names_and_paths("${deps}" OUT_LIBS OUT_DIRS)  -> expanded list (quoted to preserve semicolons)
+    # get_library_names_and_paths("${deps}" OUT_LIBS OUT_DIRS)  -> expanded list (quoted to preserve semicolons)
     # or
-    #   get_library_names_and_paths(deps OUT_LIBS OUT_DIRS)        -> variable name (unquoted)
+    # get_library_names_and_paths(deps OUT_LIBS OUT_DIRS)        -> variable name (unquoted)
+    # Simplified: if the argument names an existing variable, use its list value; otherwise treat it as the list itself.
+
+    # the user may pass either a variable by name - func(var), or expanded variable - func("${var}")
+    # either way in the function scope dependency_list is a string.
+    # but we can check if a variable by that name exists in this scope and expand it to a list if so.
+    # the goal of this ugly logic is to support both calling conventions.
     if(DEFINED ${dependency_list})
-        set(_raw_tokens ${${dependency_list}})
+        # the user passed the variable by name, hence it has a value defined,
+        set(_dependency_list "${${dependency_list}}")
     else()
-        # dependency_list already holds the expanded tokens (possibly separated by semicolons)
-        string(REPLACE "\n" ";" _raw_tokens "${dependency_list}")
+        set(_dependency_list "${dependency_list}")
     endif()
+
     set(_lib_names "")
-    set(_lib_dirs  "")
+    set(_lib_dirs "")
     set(_lib_bases "")
 
-    # Register base->debug/release mappings to allow generator expressions later
-    function(_ulp_register_lib lib_name lib_dir)
-        if(lib_name STREQUAL "")
-            return()
-        endif()
-        # Determine base (strip trailing d if present and preceding char is alnum)
-        set(_base "${lib_name}")
-        if(_base MATCHES ".+[A-Za-z0-9_]d$")
-            string(REGEX REPLACE "d$" "" _maybe "${_base}")
-            # We'll treat this as debug variant (typical MSVC naming)
-            set(_base "${_maybe}")
-            set(_is_debug TRUE)
-        else()
-            set(_is_debug FALSE)
-        endif()
-
-        # Track list of bases
-        list(FIND _lib_bases "${_base}" _idx)
-        if(_idx EQUAL -1)
-            list(APPEND _lib_bases "${_base}")
-            set(_lib_bases "${_lib_bases}" PARENT_SCOPE)
-        endif()
-
-        # Normalize directory path for storage
-        file(TO_CMAKE_PATH "${lib_dir}" _norm_dir)
-
-        if(_is_debug)
-            set(_dbg_name_var   "_base_${_base}_debug_name")
-            set(_dbg_dir_var    "_base_${_base}_debug_dir")
-            set(${_dbg_name_var} "${lib_name}" PARENT_SCOPE)
-            set(${_dbg_dir_var}  "${_norm_dir}" PARENT_SCOPE)
-        else()
-            set(_rel_name_var   "_base_${_base}_release_name")
-            set(_rel_dir_var    "_base_${_base}_release_dir")
-            set(${_rel_name_var} "${lib_name}" PARENT_SCOPE)
-            set(${_rel_dir_var}  "${_norm_dir}" PARENT_SCOPE)
-        endif()
-    endfunction()
-
-    # Helper: add unique item to list variable name passed
-    function(_ulp_add_unique listVar value)
-        if(NOT "${value}" STREQUAL "")
-            set(_tmp_list "${${listVar}}")
-            list(FIND _tmp_list "${value}" _idx)
-            if(_idx EQUAL -1)
-                list(APPEND _tmp_list "${value}")
-                set(${listVar} "${_tmp_list}" PARENT_SCOPE)
-            else()
-                set(${listVar} "${_tmp_list}" PARENT_SCOPE)
-            endif()
-        endif()
-    endfunction()
-
-    # Normalize path (make absolute) if possible
-    function(_ulp_normalize_path input_path out_var)
-        if(IS_ABSOLUTE "${input_path}")
-            file(TO_CMAKE_PATH "${input_path}" _np)
-            set(${out_var} "${_np}" PARENT_SCOPE)
-        else()
-            # Try to resolve relative to current source/binary dirs
-            if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${input_path}")
-                get_filename_component(_abs "${CMAKE_CURRENT_SOURCE_DIR}/${input_path}" ABSOLUTE)
-                file(TO_CMAKE_PATH "${_abs}" _np)
-                set(${out_var} "${_np}" PARENT_SCOPE)
-            elseif(EXISTS "${CMAKE_CURRENT_BINARY_DIR}/${input_path}")
-                get_filename_component(_abs "${CMAKE_CURRENT_BINARY_DIR}/${input_path}" ABSOLUTE)
-                file(TO_CMAKE_PATH "${_abs}" _np)
-                set(${out_var} "${_np}" PARENT_SCOPE)
-            else()
-                set(${out_var} "${input_path}" PARENT_SCOPE)
-            endif()
-        endif()
-    endfunction()
-
-    foreach(tok IN LISTS _raw_tokens)
-        if(tok STREQUAL "")
+    foreach(dependency IN LISTS _dependency_list)
+        if(dependency STREQUAL "")
             continue()
         endif()
 
-        string(STRIP "${tok}" tok_stripped)
+        string(STRIP "${dependency}" dependency_stripped)
 
         # Skip generator expressions
-        if(tok_stripped MATCHES "^[\\$<]")
+        if(dependency_stripped MATCHES "^[\\$<]")
             continue()
         endif()
 
         # -L<dir>
-        if(tok_stripped MATCHES "^-L(.+)$")
-            string(REGEX REPLACE "^-L" "" _dir "${tok_stripped}")
-            _ulp_normalize_path("${_dir}" _dir_norm)
+        if(dependency_stripped MATCHES "^-L(.+)$")
+            string(REGEX REPLACE "^-L" "" _dir "${dependency_stripped}")
+            make_absolute_if_possible("${_dir}" _dir_norm)
+
             if(IS_DIRECTORY "${_dir_norm}")
-                _ulp_add_unique(_lib_dirs "${_dir_norm}")
+                append_to_list_if_not_found(_lib_dirs "${_dir_norm}")
             endif()
             continue()
         endif()
 
         # -l<name>
-        if(tok_stripped MATCHES "^-l(.+)$")
-            string(REGEX REPLACE "^-l" "" _lname "${tok_stripped}")
-            _ulp_add_unique(_lib_names "${_lname}")
+        if(dependency_stripped MATCHES "^-l(.+)$")
+            string(REGEX REPLACE "^-l" "" _lname "${dependency_stripped}")
+            append_to_list_if_not_found(_lib_names "${_lname}")
             continue()
         endif()
 
         # Absolute / relative path to library file
-        if(tok_stripped MATCHES "\\.(a|so|dylib|lib)$" OR tok_stripped MATCHES "\\.lib$" OR tok_stripped MATCHES "\\.dll$")
-            _ulp_normalize_path("${tok_stripped}" _maybe_path)
+        if(dependency_stripped MATCHES "\\.(a|so|dylib|lib)$" OR dependency_stripped MATCHES "\\.lib$" OR dependency_stripped MATCHES "\\.dll$")
+            make_absolute_if_possible("${dependency_stripped}" _maybe_path)
+
             if(EXISTS "${_maybe_path}")
                 get_filename_component(_libdir "${_maybe_path}" DIRECTORY)
-                get_filename_component(_fname  "${_maybe_path}" NAME_WE)
+                get_filename_component(_fname "${_maybe_path}" NAME_WE)
+
                 # Strip common prefixes 'lib' (UNIX) but keep if entire name is just 'lib'
                 if(_fname MATCHES "^lib.+" AND NOT _fname STREQUAL "lib")
                     string(REGEX REPLACE "^lib" "" _fname "${_fname}")
                 endif()
-                _ulp_add_unique(_lib_dirs "${_libdir}")
-                _ulp_add_unique(_lib_names "${_fname}")
+
+                append_to_list_if_not_found(_lib_dirs "${_libdir}")
+                append_to_list_if_not_found(_lib_names "${_fname}")
                 _ulp_register_lib("${_fname}" "${_libdir}")
                 continue()
             endif()
         endif()
 
         # If it's a CMake target, attempt to resolve its library artifact(s)
-        if(TARGET ${tok_stripped})
+        if(TARGET ${dependency_stripped})
             # Try config-aware artifact first
-            get_target_property(_tTYPE ${tok_stripped} TYPE)
+            get_target_property(_tTYPE ${dependency_stripped} TYPE)
+
             if(_tTYPE STREQUAL "INTERFACE_LIBRARY")
-                # Interface library has no artifact -> skip (its deps already in list)
+            # Interface library has no artifact -> skip (its deps already in list)
             else()
                 # Prefer generator expression for file (not evaluated here) is hard; try LOCATION properties
                 # Imported / built libs:
                 # Iterate potential properties for multi-config
                 set(_candidate_files "")
+
                 # Add config-specific properties for common configs to be robust even if CMAKE_BUILD_TYPE empty (multi-config generators)
                 foreach(_cfg Debug Release RelWithDebInfo MinSizeRel)
                     foreach(prop IMPORTED_IMPLIB_${_cfg} IMPORTED_LOCATION_${_cfg})
-                        get_target_property(_pval ${tok_stripped} ${prop})
+                        get_target_property(_pval ${dependency_stripped} ${prop})
+
                         if(_pval)
                             list(APPEND _candidate_files "${_pval}")
                         endif()
                     endforeach()
                 endforeach()
+
                 foreach(prop IMPORTED_IMPLIB_${CMAKE_BUILD_TYPE} IMPORTED_LOCATION_${CMAKE_BUILD_TYPE} IMPORTED_IMPLIB IMPORTED_LOCATION)
-                    get_target_property(_pval ${tok_stripped} ${prop})
+                    get_target_property(_pval ${dependency_stripped} ${prop})
+
                     if(_pval)
                         list(APPEND _candidate_files "${_pval}")
                     endif()
                 endforeach()
+
                 # Fallback: old LOCATION (may be deprecated)
-                get_target_property(_legacy_loc ${tok_stripped} LOCATION)
+                get_target_property(_legacy_loc ${dependency_stripped} LOCATION)
+
                 if(_legacy_loc)
                     list(APPEND _candidate_files "${_legacy_loc}")
                 endif()
@@ -255,51 +310,60 @@ function(get_library_names_and_paths dependency_list out_lib_names_var out_lib_d
                     if(EXISTS "${_cf}")
                         get_filename_component(_cfd "${_cf}" DIRECTORY)
                         get_filename_component(_cfn "${_cf}" NAME_WE)
+
                         if(_cfn MATCHES "^lib.+" AND NOT _cfn STREQUAL "lib")
                             string(REGEX REPLACE "^lib" "" _cfn "${_cfn}")
                         endif()
-                        _ulp_add_unique(_lib_dirs "${_cfd}")
-                        _ulp_add_unique(_lib_names "${_cfn}")
+
+                        append_to_list_if_not_found(_lib_dirs "${_cfd}")
+                        append_to_list_if_not_found(_lib_names "${_cfn}")
                         _ulp_register_lib("${_cfn}" "${_cfd}")
                     endif()
                 endforeach()
+
                 # If no artifact found, still record logical target name (last component after ::)
                 if(_lib_names STREQUAL "")
-                    string(REPLACE "::" ";" _parts "${tok_stripped}")
+                    string(REPLACE "::" ";" _parts "${dependency_stripped}")
                     list(GET _parts -1 _short)
-                    _ulp_add_unique(_lib_names "${_short}")
+                    append_to_list_if_not_found(_lib_names "${_short}")
                 endif()
             endif()
             continue()
         endif()
 
         # Fallback: raw token - could be a system lib name (e.g., pthread) -> treat as name
-        if(NOT tok_stripped MATCHES "[\\/:]")
-            _ulp_add_unique(_lib_names "${tok_stripped}")
+        if(NOT dependency_stripped MATCHES "[\\/:]")
+            append_to_list_if_not_found(_lib_names "${dependency_stripped}")
         endif()
     endforeach()
+
     # Build generator-expression aware lists
     set(_gen_lib_names "")
-    set(_gen_lib_dirs  "")
+    set(_gen_lib_dirs "")
+
     foreach(_base IN LISTS _lib_bases)
         set(_rel_name_var "_base_${_base}_release_name")
         set(_dbg_name_var "_base_${_base}_debug_name")
-        set(_rel_dir_var  "_base_${_base}_release_dir")
-        set(_dbg_dir_var  "_base_${_base}_debug_dir")
+        set(_rel_dir_var "_base_${_base}_release_dir")
+        set(_dbg_dir_var "_base_${_base}_debug_dir")
 
         set(_have_release FALSE)
         set(_have_debug FALSE)
+
         if(DEFINED ${_rel_name_var})
             set(_have_release TRUE)
             set(_rel_name ${${_rel_name_var}})
         endif()
+
         if(DEFINED ${_dbg_name_var})
             set(_have_debug TRUE)
             set(_dbg_name ${${_dbg_name_var}})
         endif()
+
         if(DEFINED ${_rel_dir_var})
             set(_rel_dir ${${_rel_dir_var}})
         endif()
+
         if(DEFINED ${_dbg_dir_var})
             set(_dbg_dir ${${_dbg_dir_var}})
         endif()
@@ -328,6 +392,7 @@ function(get_library_names_and_paths dependency_list out_lib_names_var out_lib_d
         endif()
 
         list(APPEND _gen_lib_names "${_name_expr}")
+
         if(NOT _dir_expr STREQUAL "")
             list(APPEND _gen_lib_dirs "${_dir_expr}")
         endif()
@@ -338,5 +403,5 @@ function(get_library_names_and_paths dependency_list out_lib_names_var out_lib_d
     list(REMOVE_DUPLICATES _gen_lib_dirs)
 
     set(${out_lib_names_var} "${_gen_lib_names}" PARENT_SCOPE)
-    set(${out_lib_dirs_var}  "${_gen_lib_dirs}"  PARENT_SCOPE)
+    set(${out_lib_dirs_var} "${_gen_lib_dirs}" PARENT_SCOPE)
 endfunction()
