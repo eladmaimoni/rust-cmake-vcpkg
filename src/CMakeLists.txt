@@ -1,1 +1,2 @@
 add_subdirectory(ccore)
+add_subdirectory(by2bridge)
