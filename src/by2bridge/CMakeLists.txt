@@ -38,6 +38,14 @@ set(_ccore_release_dirs "")
 # Explicitly query both configs for each target dep
 foreach(dep IN LISTS dependencies)
     if(TARGET ${dep})
+        # this is a cmake target
+      
+        # IMPORTED_IMPLIB - On DLL platforms, to the location of the ``.lib`` part of the DLL.
+        # IMPORTED_LOCATION - The location of the actual library file to be linked against.
+        get_target_property(release_library ${dep} IMPORTED_IMPLIB_RELEASE)
+        get_target_property(release_location ${dep} IMPORTED_LOCATION_RELEASE)
+        get_target_property(debug_library ${dep} IMPORTED_IMPLIB_DEBUG)
+        get_target_property(debug_location ${dep} IMPORTED_LOCATION_DEBUG) 
         foreach(_cfg Debug RelWithDebInfo)
             string(TOUPPER "${_cfg}" _CFG_UP)
             set(_loc "")
@@ -84,6 +92,7 @@ foreach(dep IN LISTS dependencies)
             endif()
         endforeach()
     elseif(dep MATCHES "^-l(.+)$")
+        # dependency is a raw library dependency
         string(REGEX REPLACE "^-l" "" _lname "${dep}")
         list(APPEND _ccore_debug_libs "${_lname}")
         list(APPEND _ccore_release_libs "${_lname}")
