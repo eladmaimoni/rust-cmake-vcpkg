@@ -268,7 +268,7 @@ function(get_library_names_and_paths dependency_list out_lib_names_var out_lib_d
         endif()
 
         # If it's a CMake target, attempt to resolve its library artifact(s)
-        if(TARGET ${dependency_stripped})
+    if(TARGET ${dependency_stripped})
             # Try config-aware artifact first
             get_target_property(_tTYPE ${dependency_stripped} TYPE)
 
@@ -281,7 +281,9 @@ function(get_library_names_and_paths dependency_list out_lib_names_var out_lib_d
                 set(_candidate_files "")
 
                 # Add config-specific properties for common configs to be robust even if CMAKE_BUILD_TYPE empty (multi-config generators)
-                foreach(_cfg Debug Release RelWithDebInfo MinSizeRel)
+                # NOTE: Property suffixes for imported locations are upper-case config names.
+                # Ensure we query using upper-case to catch artifacts for all multi-config generators.
+                foreach(_cfg Debug Release RELWITHDEBINFO MINSIZEREL)
                     foreach(prop IMPORTED_IMPLIB_${_cfg} IMPORTED_LOCATION_${_cfg})
                         get_target_property(_pval ${dependency_stripped} ${prop})
 
@@ -291,6 +293,7 @@ function(get_library_names_and_paths dependency_list out_lib_names_var out_lib_d
                     endforeach()
                 endforeach()
 
+                # Also try with current CMAKE_BUILD_TYPE (may be lower/mixed case) and plain properties.
                 foreach(prop IMPORTED_IMPLIB_${CMAKE_BUILD_TYPE} IMPORTED_LOCATION_${CMAKE_BUILD_TYPE} IMPORTED_IMPLIB IMPORTED_LOCATION)
                     get_target_property(_pval ${dependency_stripped} ${prop})
 
@@ -318,6 +321,18 @@ function(get_library_names_and_paths dependency_list out_lib_names_var out_lib_d
                         append_to_list_if_not_found(_lib_dirs "${_cfd}")
                         append_to_list_if_not_found(_lib_names "${_cfn}")
                         _ulp_register_lib("${_cfn}" "${_cfd}")
+                    else()
+                        # If file not found but looks like a debug variant (ends with d) try sibling without d
+                        get_filename_component(_cfd "${_cf}" DIRECTORY)
+                        get_filename_component(_cfn_full "${_cf}" NAME_WE)
+                        if(_cfn_full MATCHES ".+[A-Za-z0-9_]d$")
+                            string(REGEX REPLACE "d$" "" _rel_base "${_cfn_full}")
+                            if(EXISTS "${_cfd}/${_rel_base}.lib")
+                                append_to_list_if_not_found(_lib_dirs "${_cfd}")
+                                append_to_list_if_not_found(_lib_names "${_rel_base}")
+                                _ulp_register_lib("${_rel_base}" "${_cfd}")
+                            endif()
+                        endif()
                     endif()
                 endforeach()
 
@@ -402,6 +417,14 @@ function(get_library_names_and_paths dependency_list out_lib_names_var out_lib_d
     list(REMOVE_DUPLICATES _gen_lib_names)
     list(REMOVE_DUPLICATES _gen_lib_dirs)
 
-    set(${out_lib_names_var} "${_gen_lib_names}" PARENT_SCOPE)
-    set(${out_lib_dirs_var} "${_gen_lib_dirs}" PARENT_SCOPE)
+    if(_lib_bases)
+        set(${out_lib_names_var} "${_gen_lib_names}" PARENT_SCOPE)
+        set(${out_lib_dirs_var} "${_gen_lib_dirs}" PARENT_SCOPE)
+    else()
+        # No base/debug-release mapping captured; fall back to raw collected lists.
+        list(REMOVE_DUPLICATES _lib_names)
+        list(REMOVE_DUPLICATES _lib_dirs)
+        set(${out_lib_names_var} "${_lib_names}" PARENT_SCOPE)
+        set(${out_lib_dirs_var} "${_lib_dirs}" PARENT_SCOPE)
+    endif()
 endfunction()
