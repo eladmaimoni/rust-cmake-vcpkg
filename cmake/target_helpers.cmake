@@ -113,7 +113,7 @@ macro(append_target_output_file_and_output_dir target debug_libs debug_dirs rele
             else()
                 # this is a cmake target that hasn't been installed yet, so we just use the installation
                 # location
-                set(release_location "${CMAKE_INSTALL_PREFIX}/lib/Release/${output_name_release}")
+                set(release_location "${CMAKE_INSTALL_PREFIX}/lib/${output_name_release}")
             endif()
 
             if(imported_implib_debug)
@@ -123,7 +123,7 @@ macro(append_target_output_file_and_output_dir target debug_libs debug_dirs rele
             else()
                 # this is a cmake target that hasn't been installed yet, so we just use the installation
                 # location
-                set(debug_location "${CMAKE_INSTALL_PREFIX}/lib/Debug/${output_name_debug}")
+                set(debug_location "${CMAKE_INSTALL_PREFIX}/debug/lib/${output_name_debug}")
             endif()
 
             get_filename_component(debug_dir "${debug_location}" DIRECTORY) # directory

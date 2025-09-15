@@ -1,6 +1,5 @@
 include(CMakePackageConfigHelpers)
 
-set(ULTRA_INSTALL_CONFIG $<IF:$<CONFIG:Debug>,Debug,Release>)
 
 function(setup_target_includes_for_install
     target_name
@@ -71,18 +70,24 @@ function(add_target_to_global_export_set
 
     # this causes the dependant runtime artifacts such as dlls
     # to be copied into the bin directory
+
+    #
+        # Use conditional generator expression: emits 'debug' for Debug config, empty otherwise
+    set(lib_bin_prefix $<$<CONFIG:Debug>:debug>)
+    set(lib_dest ${lib_bin_prefix}/lib)
+    set(bin_dest ${lib_bin_prefix}/bin)
+
     install(
         TARGETS ${target_name}
         EXPORT ${export_set} # when installing, generate a "targets" file. clients can include this
 
         # DESTINATION lib/$<CONFIG>
-        ARCHIVE DESTINATION lib/${ULTRA_INSTALL_CONFIG}
-        LIBRARY DESTINATION lib/${ULTRA_INSTALL_CONFIG}
-        RUNTIME DESTINATION bin/${ULTRA_INSTALL_CONFIG}
+        ARCHIVE DESTINATION ${lib_dest}
+        LIBRARY DESTINATION ${lib_dest}
+        RUNTIME DESTINATION ${bin_dest}
         INCLUDES DESTINATION include
 
         # RUNTIME_DEPENDENCY_SET FLUTTER_EMBEDDER_API_RUNTIME_DEPENDENCY_SET
-        # DESTINATION lib/${ULTRA_INSTALL_CONFIG}
     )
 
     # this piece of SHIT does not generate correct IMPORTED_CONFIGURATIONS. WHY????
@@ -108,7 +113,7 @@ function(add_target_to_global_export_set
 
             # FILES $<TARGET_COMPILE_PDB_FILE:${target_name}> # https://gitlab.kitware.com/cmake/cmake/-/issues/16935
             FILES $<TARGET_FILE_DIR:${target_name}>/${target_name}.pdb
-            DESTINATION lib/${ULTRA_INSTALL_CONFIG}
+            DESTINATION ${lib_dest}
             OPTIONAL
         )
 
@@ -118,7 +123,7 @@ function(add_target_to_global_export_set
     )
         install(
             FILES $<TARGET_PDB_FILE:${target_name}>
-            DESTINATION lib/${ULTRA_INSTALL_CONFIG}
+            DESTINATION ${lib_dest}
             OPTIONAL
         )
 
