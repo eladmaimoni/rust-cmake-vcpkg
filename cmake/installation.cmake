@@ -13,7 +13,7 @@ function(setup_target_includes_for_install
         $<INSTALL_INTERFACE:include/> # when used from installation folder, the include directories is the exported path
     )
 
-    #install(DIRECTORY ${public_include_folder} DESTINATION include FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
+    install(DIRECTORY ${public_include_folder} DESTINATION include FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
 
     # when installing, copy the public header files to the include directory
     # file(GLOB_RECURSE

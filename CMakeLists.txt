@@ -10,7 +10,14 @@ include(cmake/code_analysis.cmake)
 include(cmake/target_helpers.cmake)
 include(cmake/installation.cmake)
 
+set(LOG_SEPARATOR "===============================================================")
+
+
 project(by2)
+
+message(STATUS "${LOG_SEPARATOR}")
+message(STATUS "Project: ${PROJECT_NAME}")
+message(STATUS "${LOG_SEPARATOR}")
 
 include(GNUInstallDirs)
 # the export set that collects all targets to be exported
@@ -23,6 +30,7 @@ find_package(Eigen3 CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 
 add_subdirectory(src)
+
 
 # Project-level installs (once per project).
 install(EXPORT "${export_set}"
