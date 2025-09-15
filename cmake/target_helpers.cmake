@@ -81,46 +81,57 @@ endfunction()
 macro(append_target_output_file_and_output_dir target debug_libs debug_dirs release_libs release_dirs)
         
     if(TARGET ${target})
-        # this is a cmake target
-        # Try to get the actual output file for both Debug and Release configurations.
-        # Prefer IMPORTED_IMPLIB/IMPORTED_LOCATION properties if set (for imported targets).        
-        # IMPORTED_IMPLIB - On DLL platforms, to the location of the ``.lib`` part of the DLL. or the location of the shared library on other platforms.
-        # IMPORTED_LOCATION - The location of the actual library file to be linked against.
-        get_target_property(imported_implib_release ${target}  IMPLIB_RELEASE)
-        get_target_property(imported_location_release ${target} IMPORTED_LOCATION_RELEASE)
-        get_target_property(imported_implib_debug ${target} IMPORTED_IMPLIB_DEBUG)
-        get_target_property(imported_location_debug ${target} IMPORTED_LOCATION_DEBUG)
 
-        get_target_output_name(${target} output_name_release output_name_debug)
-        if (imported_implib_release)
-            set(release_location "${imported_implib_release}")
-        elseif (imported_location_release)
-            set(release_location "${imported_location_release}")
-        else()
-            # this is a cmake target that hasn't been installed yet, so we just use the installation
-            # location
-            set(release_location "${CMAKE_INSTALL_PREFIX}/lib/Release/${output_name_release}")
+        get_target_property(_type "${target}" TYPE)
+
+        if(_type STREQUAL "INTERFACE_LIBRARY" OR
+            _type STREQUAL "UTILITY" OR
+            _type STREQUAL "OBJECT_LIBRARY")
+            # not a real library target - skip
+        else()  
+            # this is a cmake target
+            # Try to get the actual output file for both Debug and Release configurations.
+            # Prefer IMPORTED_IMPLIB/IMPORTED_LOCATION properties if set (for imported targets).        
+            # IMPORTED_IMPLIB - On DLL platforms, to the location of the ``.lib`` part of the DLL. or the location of the shared library on other platforms.
+            # IMPORTED_LOCATION - The location of the actual library file to be linked against.
+            get_target_property(imported_implib_release ${target} IMPORTED_IMPLIB_RELEASE )
+            get_target_property(imported_location_release ${target} IMPORTED_LOCATION_RELEASE)
+            get_target_property(imported_implib_debug ${target} IMPORTED_IMPLIB_DEBUG)
+            get_target_property(imported_location_debug ${target} IMPORTED_LOCATION_DEBUG)
+
+
+
+            get_target_output_name(${target} output_name_release output_name_debug)
+            if (imported_implib_release)
+                set(release_location "${imported_implib_release}")
+            elseif (imported_location_release)
+                set(release_location "${imported_location_release}")
+            else()
+                # this is a cmake target that hasn't been installed yet, so we just use the installation
+                # location
+                set(release_location "${CMAKE_INSTALL_PREFIX}/lib/Release/${output_name_release}")
+            endif()
+
+            if (imported_implib_debug)
+                set(debug_location "${imported_implib_debug}")
+            elseif (imported_location_debug)
+                set(debug_location "${imported_location_debug}")
+            else()
+                # this is a cmake target that hasn't been installed yet, so we just use the installation
+                # location
+                set(debug_location "${CMAKE_INSTALL_PREFIX}/lib/Debug/${output_name_debug}")
+            endif()
+            get_filename_component(debug_dir "${debug_location}" DIRECTORY) # directory
+            get_filename_component(debug_lib_name "${debug_location}" NAME_WE) # name without extension
+
+            get_filename_component(release_dir "${release_location}" DIRECTORY) # directory
+            get_filename_component(release_lib_name "${release_location}" NAME_WE) # name without extension
+
+            LIST(APPEND debug_libs "${debug_lib_name}")
+            LIST(APPEND debug_dirs "${debug_dir}")
+            LIST(APPEND release_libs "${release_lib_name}")
+            LIST(APPEND release_dirs "${release_dir}")
         endif()
-
-        if (imported_implib_debug)
-            set(debug_location "${imported_implib_debug}")
-        elseif (imported_location_debug)
-            set(debug_location "${imported_location_debug}")
-        else()
-            # this is a cmake target that hasn't been installed yet, so we just use the installation
-            # location
-            set(debug_location "${CMAKE_INSTALL_PREFIX}/lib/Debug/${output_name_debug}")
-        endif()
-        get_filename_component(debug_dir "${debug_location}" DIRECTORY) # directory
-        get_filename_component(debug_lib_name "${debug_location}" NAME_WE) # name without extension
-
-        get_filename_component(release_dir "${release_location}" DIRECTORY) # directory
-        get_filename_component(release_lib_name "${release_location}" NAME_WE) # name without extension
-
-        LIST(APPEND debug_libs "${debug_lib_name}")
-        LIST(APPEND debug_dirs "${debug_dir}")
-        LIST(APPEND release_libs "${release_lib_name}")
-        LIST(APPEND release_dirs "${release_dir}")
     elseif(target MATCHES "^-l(.+)$")
         # dependency is a raw library dependency
         string(REGEX REPLACE "^-l" "" _lname "${target}")
