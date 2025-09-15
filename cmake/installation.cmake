@@ -13,7 +13,7 @@ function(setup_target_includes_for_install
         $<INSTALL_INTERFACE:include/> # when used from installation folder, the include directories is the exported path
     )
 
-    install(DIRECTORY ${public_include_folder} DESTINATION include FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
+    #install(DIRECTORY ${public_include_folder} DESTINATION include FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
 
     # when installing, copy the public header files to the include directory
     # file(GLOB_RECURSE
@@ -34,6 +34,11 @@ function(setup_target_for_find_package
     # message("ZZZZZZZZZZZ configure_package_config_file ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/Config.cmake.in -> ${CMAKE_CURRENT_BINARY_DIR}/${target_name}.cmake")
 
     # when installing, generate a "targets" file. clients can include this
+    # The EXPORT argument in install() is about generating an importable 
+    # “targets file” for consumers of your project. It does not install 
+    # the target itself; instead, it writes a CMake script that defines 
+    # imported targets corresponding to targets you previously marked for 
+    # export during their own install() calls.
     install(
         EXPORT ${target_name}
         FILE ${target_name}-targets.cmake
@@ -57,7 +62,7 @@ function(setup_target_for_find_package
     )
 endfunction()
 
-function(setup_target_compiled_artifacts_for_install
+function(add_target_to_global_export_set
     target_name
 )
     # when installing,
@@ -68,15 +73,17 @@ function(setup_target_compiled_artifacts_for_install
     # to be copied into the bin directory
     install(
         TARGETS ${target_name}
-        EXPORT ${target_name} # when installing, generate a "targets" file. clients can include this
+        EXPORT ${export_set} # when installing, generate a "targets" file. clients can include this
 
         # DESTINATION lib/$<CONFIG>
         ARCHIVE DESTINATION lib/${ULTRA_INSTALL_CONFIG}
+        LIBRARY DESTINATION lib/${ULTRA_INSTALL_CONFIG}
         RUNTIME DESTINATION bin/${ULTRA_INSTALL_CONFIG}
-
+        INCLUDES DESTINATION include
         # RUNTIME_DEPENDENCY_SET FLUTTER_EMBEDDER_API_RUNTIME_DEPENDENCY_SET
         # DESTINATION lib/${ULTRA_INSTALL_CONFIG}
     )
+
 
     # this piece of SHIT does not generate correct IMPORTED_CONFIGURATIONS. WHY????
     # install(
@@ -129,7 +136,7 @@ function(setup_target_for_install
 )
     setup_target_includes_for_install(${target_name} ${public_include_folder})
     setup_target_for_find_package(${target_name})
-    setup_target_compiled_artifacts_for_install(${target_name})
+    add_target_to_global_export_set(${target_name})
 endfunction()
 
 

@@ -13,16 +13,13 @@ target_link_libraries(
     spdlog::spdlog
 )
 
-setup_target_for_install(
-    ccore
-    ccore
-)
+setup_target_includes_for_install(ccore ccore)
+add_target_to_global_export_set(ccore)
 
 
-# target_include_directories(
-# ccore
-# PUBLIC
-# INTERFACE
-# $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/> # when using within the build, the include directories is the current source dir
-# $<INSTALL_INTERFACE:include/> # when used from installation folder, the include directories is the exported path
+# setup_target_for_install(
+#     ccore
+#     ccore
 # )
+
+

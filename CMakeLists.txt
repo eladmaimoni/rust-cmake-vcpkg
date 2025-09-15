@@ -12,10 +12,21 @@ include(cmake/installation.cmake)
 
 project(by2)
 
-# Use GNU install dirs for sensible defaults (CMAKE_INSTALL_LIBDIR / INCLUDEDIR)
 include(GNUInstallDirs)
+# the export set that collects all targets to be exported
+# using the install(TARGETS ... EXPORT ...) command
+set(export_set "${PROJECT_NAME}_exported_targets")
+
+# Use GNU install dirs for sensible defaults (CMAKE_INSTALL_LIBDIR / INCLUDEDIR)
 
 find_package(Eigen3 CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 
 add_subdirectory(src)
+
+# Project-level installs (once per project).
+install(EXPORT "${export_set}"
+  NAMESPACE "${PROJECT_NAME}::"
+  FILE "${PROJECT_NAME}Targets.cmake"
+  DESTINATION "${INSTALL_LIBDIR}/cmake/${PROJECT_NAME}"
+)
