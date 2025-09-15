@@ -73,9 +73,13 @@ function(add_target_to_global_export_set
 
     #
         # Use conditional generator expression: emits 'debug' for Debug config, empty otherwise
-    set(lib_bin_prefix $<$<CONFIG:Debug>:debug>)
-    set(lib_dest ${lib_bin_prefix}/lib)
-    set(bin_dest ${lib_bin_prefix}/bin)
+    # NOTE: Previous logic produced an empty prefix for non-Debug configs and then
+    # constructed "/lib" (leading slash) causing installs to go to C:/lib.
+    # Embed the trailing slash in the generator expression and concatenate without
+    # inserting an unconditional slash so non-Debug resolves to "lib" not "/lib".
+    set(lib_bin_prefix $<$<CONFIG:Debug>:debug/>)
+    set(lib_dest ${lib_bin_prefix}lib)
+    set(bin_dest ${lib_bin_prefix}bin)
 
     install(
         TARGETS ${target_name}
