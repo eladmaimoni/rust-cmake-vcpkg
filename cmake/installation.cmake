@@ -442,8 +442,12 @@ function(install_dependency_manifest_for_target target_name)
 
             if (imported_implib_release)
                 set(release_location "${imported_implib_release}")
-            else()
+            elseif (imported_location_release)
                 set(release_location "${imported_location_release}")
+            else()
+                # this is a cmake target that hasn't been installed yet, so we just use the installation
+                # location
+                set(release_location "${CMAKE_INSTALL_PREFIX}/lib/Release/$<TARGET_FILE:${dep}>")
             endif()
 
             if (imported_implib_debug)
