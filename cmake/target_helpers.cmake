@@ -78,7 +78,7 @@ function(get_target_output_name tgt out_debug out_release)
   set(${out_release} "${_release_name}" PARENT_SCOPE)
 endfunction()
 
-macro(get_target_output_file_and_dir_for_release_and_debug target debug_libs debug_dirs release_libs release_dirs)
+macro(append_target_output_file_and_output_dir target debug_libs debug_dirs release_libs release_dirs)
         
     if(TARGET ${target})
         # this is a cmake target

@@ -421,7 +421,7 @@ function(install_dependency_manifest_for_target target_name)
 
     # Explicitly query both configs for each target dep
     foreach(dep IN LISTS dependencies)
-        get_target_output_file_and_dir_for_release_and_debug(${dep} debug_libs debug_dirs release_libs release_dirs)
+        append_target_output_file_and_output_dir(${dep} debug_libs debug_dirs release_libs release_dirs)
     endforeach()
 
     list(REMOVE_DUPLICATES debug_libs)
