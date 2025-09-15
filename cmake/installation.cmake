@@ -1,6 +1,5 @@
 include(CMakePackageConfigHelpers)
 
-
 set(ULTRA_INSTALL_CONFIG $<IF:$<CONFIG:Debug>,Debug,Release>)
 
 function(setup_target_includes_for_install
@@ -35,10 +34,10 @@ function(setup_target_for_find_package
     # message("ZZZZZZZZZZZ configure_package_config_file ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/Config.cmake.in -> ${CMAKE_CURRENT_BINARY_DIR}/${target_name}.cmake")
 
     # when installing, generate a "targets" file. clients can include this
-    # The EXPORT argument in install() is about generating an importable 
-    # “targets file” for consumers of your project. It does not install 
-    # the target itself; instead, it writes a CMake script that defines 
-    # imported targets corresponding to targets you previously marked for 
+    # The EXPORT argument in install() is about generating an importable
+    # “targets file” for consumers of your project. It does not install
+    # the target itself; instead, it writes a CMake script that defines
+    # imported targets corresponding to targets you previously marked for
     # export during their own install() calls.
     install(
         EXPORT ${target_name}
@@ -81,10 +80,10 @@ function(add_target_to_global_export_set
         LIBRARY DESTINATION lib/${ULTRA_INSTALL_CONFIG}
         RUNTIME DESTINATION bin/${ULTRA_INSTALL_CONFIG}
         INCLUDES DESTINATION include
+
         # RUNTIME_DEPENDENCY_SET FLUTTER_EMBEDDER_API_RUNTIME_DEPENDENCY_SET
         # DESTINATION lib/${ULTRA_INSTALL_CONFIG}
     )
-
 
     # this piece of SHIT does not generate correct IMPORTED_CONFIGURATIONS. WHY????
     # install(
@@ -140,9 +139,8 @@ function(setup_target_for_install
     add_target_to_global_export_set(${target_name})
 endfunction()
 
-
 function(get_vcpkg_lib_and_include_dirs out_lib_dir out_include_dir)
-    # if vcpkg is being used, detect its installed dir and triplet 
+    # if vcpkg is being used, detect its installed dir and triplet
     # (when available)
     if(DEFINED VCPKG_INSTALLED_DIR)
         set(vcpkg_install_root "${VCPKG_INSTALLED_DIR}")
@@ -214,7 +212,7 @@ function(generate_pkgconfig target)
     endif()
 
     get_vcpkg_lib_and_include_dirs(vcpkg_libdir vcpkg_includedir)
-    
+
     get_target_link_dependencies(${target} link_dependencies) # Collect link deps
 
     # We'll generate config-specific .pc files for multi-config generators (Debug and RelWithDebInfo)
@@ -430,26 +428,32 @@ function(install_dependency_manifest_for_target target_name)
     list(REMOVE_DUPLICATES release_dirs)
 
     set(_debug_manifest "${CMAKE_CURRENT_BINARY_DIR}/ccore-dependencies-Debug.txt")
-    set(_rel_manifest   "${CMAKE_CURRENT_BINARY_DIR}/ccore-dependencies-Release.txt")
+    set(_rel_manifest "${CMAKE_CURRENT_BINARY_DIR}/ccore-dependencies-Release.txt")
 
-    file(WRITE  "${_debug_manifest}" "# ccore dependency manifest (configuration: Debug)\n# Libraries\n")
+    file(WRITE "${_debug_manifest}" "# ccore dependency manifest (configuration: Debug)\n# Libraries\n")
+
     foreach(n IN LISTS debug_libs)
         file(APPEND "${_debug_manifest}" "${n}\n")
     endforeach()
+
     file(APPEND "${_debug_manifest}" "# Library Paths\n")
+
     foreach(d IN LISTS debug_dirs)
         file(APPEND "${_debug_manifest}" "${d}\n")
     endforeach()
 
-    file(WRITE  "${_rel_manifest}" "# ccore dependency manifest (configuration: Release)\n# Libraries\n")
+    file(WRITE "${_rel_manifest}" "# ccore dependency manifest (configuration: Release)\n# Libraries\n")
+
     foreach(n IN LISTS release_libs)
         file(APPEND "${_rel_manifest}" "${n}\n")
     endforeach()
+
     file(APPEND "${_rel_manifest}" "# Library Paths\n")
+
     foreach(d IN LISTS release_dirs)
         file(APPEND "${_rel_manifest}" "${d}\n")
     endforeach()
 
     install(FILES "${_debug_manifest}" DESTINATION lib/Debug RENAME ccore-dependencies-Debug.txt)
-    install(FILES "${_rel_manifest}"   DESTINATION lib/Release RENAME ccore-dependencies-Release.txt)
+    install(FILES "${_rel_manifest}" DESTINATION lib/Release RENAME ccore-dependencies-Release.txt)
 endfunction()
