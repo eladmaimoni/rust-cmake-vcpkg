@@ -12,6 +12,122 @@ function(target_disable_console_but_use_normal_main target_name)
     endif()
 endfunction()
 
+
+# Usage:
+#   get_target_output_name(<target> <out_debug_var> <out_release_var>)
+#
+# Computes the effective output base name for Debug and Release configurations at configure time.
+# - Prefers OUTPUT_NAME_DEBUG/OUTPUT_NAME_RELEASE if set.
+# - Falls back to OUTPUT_NAME or the target's logical name.
+# - Applies *_POSTFIX (target or global) when per-config OUTPUT_NAME is not set.
+function(get_target_output_name tgt out_debug out_release)
+  if(NOT TARGET "${tgt}")
+    message(FATAL_ERROR "get_target_output_name: '${tgt}' is not an existing target.")
+  endif()
+
+  # Resolve alias targets to their real targets.
+  get_target_property(_aliased "${tgt}" ALIASED_TARGET)
+  if(_aliased)
+    set(_tgt "${_aliased}")
+  else()
+    set(_tgt "${tgt}")
+  endif()
+
+  # Base name: OUTPUT_NAME or target logical name.
+  get_target_property(_base_name "${_tgt}" OUTPUT_NAME)
+  if(NOT _base_name OR _base_name STREQUAL "NOTFOUND" OR _base_name STREQUAL "")
+    set(_base_name "${_tgt}")
+  endif()
+
+  # Debug name: OUTPUT_NAME_DEBUG or base + debug postfix.
+  set(_debug_name "${_base_name}")
+  get_target_property(_on_debug "${_tgt}" OUTPUT_NAME_DEBUG)
+  if(_on_debug AND NOT _on_debug STREQUAL "NOTFOUND" AND NOT _on_debug STREQUAL "")
+    set(_debug_name "${_on_debug}")
+  else()
+    get_target_property(_dbg_postfix "${_tgt}" DEBUG_POSTFIX)
+    if(NOT _dbg_postfix OR _dbg_postfix STREQUAL "NOTFOUND")
+      if(DEFINED CMAKE_DEBUG_POSTFIX)
+        set(_dbg_postfix "${CMAKE_DEBUG_POSTFIX}")
+      else()
+        set(_dbg_postfix "")
+      endif()
+    endif()
+    set(_debug_name "${_debug_name}${_dbg_postfix}")
+  endif()
+
+  # Release name: OUTPUT_NAME_RELEASE or base + release postfix (usually empty).
+  set(_release_name "${_base_name}")
+  get_target_property(_on_release "${_tgt}" OUTPUT_NAME_RELEASE)
+  if(_on_release AND NOT _on_release STREQUAL "NOTFOUND" AND NOT _on_release STREQUAL "")
+    set(_release_name "${_on_release}")
+  else()
+    get_target_property(_rel_postfix "${_tgt}" RELEASE_POSTFIX)
+    if(NOT _rel_postfix OR _rel_postfix STREQUAL "NOTFOUND")
+      if(DEFINED CMAKE_RELEASE_POSTFIX)
+        set(_rel_postfix "${CMAKE_RELEASE_POSTFIX}")
+      else()
+        set(_rel_postfix "")
+      endif()
+    endif()
+    set(_release_name "${_release_name}${_rel_postfix}")
+  endif()
+
+  # Return values to the caller.
+  set(${out_debug} "${_debug_name}" PARENT_SCOPE)
+  set(${out_release} "${_release_name}" PARENT_SCOPE)
+endfunction()
+
+macro(get_target_output_file_and_dir_for_release_and_debug target debug_libs debug_dirs release_libs release_dirs)
+        
+    if(TARGET ${target})
+        # this is a cmake target
+        # Try to get the actual output file for both Debug and Release configurations.
+        # Prefer IMPORTED_IMPLIB/IMPORTED_LOCATION properties if set (for imported targets).        
+        # IMPORTED_IMPLIB - On DLL platforms, to the location of the ``.lib`` part of the DLL. or the location of the shared library on other platforms.
+        # IMPORTED_LOCATION - The location of the actual library file to be linked against.
+        get_target_property(imported_implib_release ${target}  IMPLIB_RELEASE)
+        get_target_property(imported_location_release ${target} IMPORTED_LOCATION_RELEASE)
+        get_target_property(imported_implib_debug ${target} IMPORTED_IMPLIB_DEBUG)
+        get_target_property(imported_location_debug ${target} IMPORTED_LOCATION_DEBUG)
+
+        get_target_output_name(${target} output_name_release output_name_debug)
+        if (imported_implib_release)
+            set(release_location "${imported_implib_release}")
+        elseif (imported_location_release)
+            set(release_location "${imported_location_release}")
+        else()
+            # this is a cmake target that hasn't been installed yet, so we just use the installation
+            # location
+            set(release_location "${CMAKE_INSTALL_PREFIX}/lib/Release/${output_name_release}")
+        endif()
+
+        if (imported_implib_debug)
+            set(debug_location "${imported_implib_debug}")
+        elseif (imported_location_debug)
+            set(debug_location "${imported_location_debug}")
+        else()
+            # this is a cmake target that hasn't been installed yet, so we just use the installation
+            # location
+            set(debug_location "${CMAKE_INSTALL_PREFIX}/lib/Debug/${output_name_debug}")
+        endif()
+        get_filename_component(debug_dir "${debug_location}" DIRECTORY) # directory
+        get_filename_component(debug_lib_name "${debug_location}" NAME_WE) # name without extension
+
+        get_filename_component(release_dir "${release_location}" DIRECTORY) # directory
+        get_filename_component(release_lib_name "${release_location}" NAME_WE) # name without extension
+
+        LIST(APPEND debug_libs "${debug_lib_name}")
+        LIST(APPEND debug_dirs "${debug_dir}")
+        LIST(APPEND release_libs "${release_lib_name}")
+        LIST(APPEND release_dirs "${release_dir}")
+    elseif(target MATCHES "^-l(.+)$")
+        # dependency is a raw library dependency
+        string(REGEX REPLACE "^-l" "" _lname "${target}")
+        list(APPEND debug_libs "${_lname}")
+        list(APPEND release_libs "${_lname}")
+    endif()
+endmacro()
 # Usage:
 # get_target_link_dependencies(myTarget OUT_VAR)
 # message("Deps: ${OUT_VAR}")
