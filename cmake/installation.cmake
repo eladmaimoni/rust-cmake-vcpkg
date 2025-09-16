@@ -180,19 +180,23 @@ function(generate_pkgconfig target)
         set(arg_DESCRIPTION "${target} library")
     endif()
 
+    # Collect dependencies of target (transitively) as logical names / cmake targets
     get_target_link_dependencies(${target} dependencies)
+
     set(debug_libs "")
-    set(release_l`ibs "")
+    set(release_libs "")  # fixed original typo release_l`ibs
     set(debug_dirs "")
     set(release_dirs "")
     set(include_dirs "")
 
-    # Explicitly query both configs for each target dep
     foreach(dep IN LISTS dependencies)
         append_target_output_file_and_output_dir(${dep} debug_libs debug_dirs release_libs release_dirs)
-        get_target_property(dep_includes ${dep} INTERFACE_INCLUDE_DIRECTORIES)
-        if(dep_includes)
-            list(APPEND include_dirs ${dep_includes})
+        # Gather PUBLIC/INTERFACE include directories
+        if(TARGET ${dep})
+            get_target_property(dep_includes ${dep} INTERFACE_INCLUDE_DIRECTORIES)
+            if(dep_includes)
+                list(APPEND include_dirs ${dep_includes})
+            endif()
         endif()
     endforeach()
 
@@ -202,17 +206,92 @@ function(generate_pkgconfig target)
     list(REMOVE_DUPLICATES release_dirs)
     list(REMOVE_DUPLICATES include_dirs)
 
-    # construct a string for package config files
+    # Normalize include dirs (skip generator expressions)
+    set(_norm_includes "")
+    foreach(inc IN LISTS include_dirs)
+        if(inc AND NOT inc MATCHES "^[\$<]" AND EXISTS "${inc}")
+            file(TO_CMAKE_PATH "${inc}" _inc_norm)
+            list(APPEND _norm_includes "${_inc_norm}")
+        endif()
+    endforeach()
+    list(REMOVE_DUPLICATES _norm_includes)
 
-    # Create the .pc file in the build tree and install it
-    set(pc_file_debug "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-debug.pc")
-    set(pc_file_debug "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.pc")
-    
+    function(_join_with_prefix out_var prefix input_list)
+        set(_tmp "")
+        foreach(item IN LISTS input_list)
+            if(NOT item STREQUAL "")
+                list(APPEND _tmp "${prefix}${item}")
+            endif()
+        endforeach()
+        string(REPLACE ";" " " _joined "${_tmp}")
+        set(${out_var} "${_joined}" PARENT_SCOPE)
+    endfunction()
 
+    _join_with_prefix(_cflags "-I" "${_norm_includes}")
 
+    # Prepare -L paths (validated existing directories only)
+    function(_emit_L out_var dirs)
+        set(_tmp "")
+        foreach(d IN LISTS dirs)
+            if(d AND IS_DIRECTORY "${d}")
+                file(TO_CMAKE_PATH "${d}" _d_norm)
+                list(APPEND _tmp "-L${_d_norm}")
+            endif()
+        endforeach()
+        string(REPLACE ";" " " _joined "${_tmp}")
+        set(${out_var} "${_joined}" PARENT_SCOPE)
+    endfunction()
 
-    install(FILES "${pc_file_debug}" DESTINATION "pkgconfig")
-    install(FILES "${pc_file_release}" DESTINATION "pkgconfig")
+    _emit_L(_libpaths_debug "${debug_dirs}")
+    _emit_L(_libpaths_release "${release_dirs}")
+
+    function(_emit_l out_var names)
+        set(_tmp "")
+        foreach(n IN LISTS names)
+            if(NOT n STREQUAL "")
+                list(APPEND _tmp "-l${n}")
+            endif()
+        endforeach()
+        string(REPLACE ";" " " _joined "${_tmp}")
+        set(${out_var} "${_joined}" PARENT_SCOPE)
+    endfunction()
+
+    _emit_l(_libs_debug   "${debug_libs}")
+    _emit_l(_libs_release "${release_libs}")
+
+    # Compose pkg-config contents
+    set(_prefix "${CMAKE_INSTALL_PREFIX}")
+    file(TO_CMAKE_PATH "${_prefix}" _prefix_norm)
+
+    set(pc_file_debug   "${CMAKE_CURRENT_BINARY_DIR}/${target}-debug.pc")
+    set(pc_file_release "${CMAKE_CURRENT_BINARY_DIR}/${target}.pc")
+
+    set(_content_debug "prefix=${_prefix_norm}\n")
+    string(APPEND _content_debug "exec_prefix=\${prefix}\n")
+    string(APPEND _content_debug "libdir=\${prefix}/debug/lib\n")
+    string(APPEND _content_debug "includedir=\${prefix}/include\n\n")
+    string(APPEND _content_debug "Name: ${target}-debug\n")
+    string(APPEND _content_debug "Description: ${arg_DESCRIPTION} (debug)\n")
+    string(APPEND _content_debug "Version: ${arg_VERSION}\n")
+    string(APPEND _content_debug "Cflags: ${_cflags} -I\${includedir}\n")
+    string(APPEND _content_debug "Libs: -L\${libdir} ${_libpaths_debug} ${_libs_debug}\n")
+
+    file(WRITE "${pc_file_debug}" "${_content_debug}")
+
+    set(_content_release "prefix=${_prefix_norm}\n")
+    string(APPEND _content_release "exec_prefix=\${prefix}\n")
+    string(APPEND _content_release "libdir=\${prefix}/lib\n")
+    string(APPEND _content_release "includedir=\${prefix}/include\n\n")
+    string(APPEND _content_release "Name: ${target}\n")
+    string(APPEND _content_release "Description: ${arg_DESCRIPTION}\n")
+    string(APPEND _content_release "Version: ${arg_VERSION}\n")
+    string(APPEND _content_release "Cflags: ${_cflags} -I\${includedir}\n")
+    string(APPEND _content_release "Libs: -L\${libdir} ${_libpaths_release} ${_libs_release}\n")
+
+    file(WRITE "${pc_file_release}" "${_content_release}")
+
+    install(FILES "${pc_file_release}" DESTINATION "lib/pkgconfig")
+    install(FILES "${pc_file_debug}"   DESTINATION "debug/lib/pkgconfig" RENAME "${target}.pc")
 endfunction()
 
 
