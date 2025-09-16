@@ -1,6 +1,22 @@
 
 cmake_minimum_required(VERSION 3.25)
 
+set(LOG_SEPARATOR "===============================================================")
+project(by2)
+message(STATUS "${LOG_SEPARATOR}")
+message(STATUS "Project: ${PROJECT_NAME}")
+message(STATUS "${LOG_SEPARATOR}")
+
+option(BY2_SHARED "Build one shared library instead of per-lib static libraries" OFF)
+
+if(BY2_SHARED)
+    message(STATUS "Building shared library")
+    # Use position-independent code when building shared (dynamic) libraries,
+    # or when building static libraries intended to be linked into shared libraries.
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+    # set_target_properties(alpha PROPERTIES POSITION_INDEPENDENT_CODE ON)
+endif()
+
 include(cmake/version_details.cmake)
 include(cmake/compiler_flags.cmake)
 include(cmake/global_setup.cmake)
@@ -10,14 +26,10 @@ include(cmake/code_analysis.cmake)
 include(cmake/target_helpers.cmake)
 include(cmake/installation.cmake)
 
-set(LOG_SEPARATOR "===============================================================")
 
 
-project(by2)
 
-message(STATUS "${LOG_SEPARATOR}")
-message(STATUS "Project: ${PROJECT_NAME}")
-message(STATUS "${LOG_SEPARATOR}")
+
 
 include(GNUInstallDirs)
 # the export set that collects all targets to be exported

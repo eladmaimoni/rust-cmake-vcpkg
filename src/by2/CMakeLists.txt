@@ -1,14 +1,23 @@
 
 
+set(BY2_LIBRARY_TYPE STATIC)
+set(BY2_LIBRARY_LINKAGE PUBLIC)
+
+if(BY2_SHARED)
+    set(BY2_LIBRARY_TYPE SHARED)
+    set(BY2_LIBRARY_LINKAGE PRIVATE)
+endif()
+
 add_library(
     by2
+    ${BY2_LIBRARY_TYPE}
     by2/by2.h
     by2.cpp
 )
 
 target_link_libraries(
     by2
-    PUBLIC
+    ${BY2_LIBRARY_LINKAGE}
     ccore
 )
 
