@@ -208,26 +208,8 @@ function(generate_pkgconfig target)
     set(pc_file_debug "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-debug.pc")
     set(pc_file_debug "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.pc")
     
-    
-    file(APPEND "${pc_file}" "Name: ${target}\n")
-    file(APPEND "${pc_file}" "Description: ${arg_DESCRIPTION}\n")
-    file(APPEND "${pc_file}" "Version: ${arg_VERSION}\n")
-    file(APPEND "${pc_file}" "Libs: -L\${libdir} -l${target}\n")
 
-    if(LIBS_PRIVATE)
-        # Ensure proper spacing and leading space after the colon
-        string(STRIP "${LIBS_PRIVATE}" LIBS_PRIVATE_STRIPPED)
 
-        # Write as a single line, but keep tokens intact. Consumers can parse or wrap it.
-        file(APPEND "${pc_file}" "Libs.private: ${LIBS_PRIVATE_STRIPPED}\n")
-    endif()
-
-    # Add vcpkg include dir to Cflags when available
-    if(vcpkg_includedir)
-        file(APPEND "${pc_file}" "Cflags: -I\${includedir} -I${vcpkg_includedir}\n")
-    else()
-        file(APPEND "${pc_file}" "Cflags: -I\${includedir}\n")
-    endif()
 
     install(FILES "${pc_file_debug}" DESTINATION "pkgconfig")
     install(FILES "${pc_file_release}" DESTINATION "pkgconfig")

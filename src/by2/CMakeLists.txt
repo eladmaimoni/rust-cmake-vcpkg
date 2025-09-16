@@ -15,4 +15,4 @@ target_link_libraries(
 setup_target_includes_for_install(by2 by2)
 add_target_to_global_export_set(by2)
 
-install_dependency_manifest_for_target("by2")
+generate_pkgconfig(by2)
