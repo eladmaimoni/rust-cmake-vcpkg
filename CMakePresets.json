@@ -10,51 +10,97 @@
     ],
     "configurePresets": [
         {
-            "name": "vs2022",
-            "displayName": "vs2022",
+            "name": "msvc-md",
+            "displayName": "vs2022-md",
             "description": "",
             "inherits": [
                 "basic_paths",
                 "vcpkg",
-                "msvc143-x64"
+                "msvc143-x64-md"
             ],
             "generator": "Visual Studio 17 2022",
             "cacheVariables": {
+            }
+        },
+        {
+            "name": "msvc-mt",
+            "displayName": "vs2022-mt",
+            "description": "",
+            "inherits": [
+                "basic_paths",
+                "vcpkg",
+                "msvc143-x64-mt"
+            ],
+            "generator": "Visual Studio 17 2022",
+            "cacheVariables": {
+                "BY2_SHARED": "ON"
             }
         }
     ],
     "buildPresets": [
         {
-            "name": "vs2022r",
-            "configurePreset": "vs2022",
+            "name": "msvc-md-release",
+            "configurePreset": "msvc-md",
             "jobs": 0,
             "configuration": "RelWithDebInfo"
         },
         {
-            "name": "vs2022r-install",
-            "configurePreset": "vs2022",
+            "name": "msvc-md-debug",
+            "configurePreset": "msvc-md",
+            "jobs": 0,
+            "configuration": "Debug"
+        },
+        {
+            "name": "msvc-mt-release",
+            "configurePreset": "msvc-mt",
+            "jobs": 0,
+            "configuration": "RelWithDebInfo"
+        },
+        {
+            "name": "msvc-mt-debug",
+            "configurePreset": "msvc-mt",
+            "jobs": 0,
+            "configuration": "Debug"
+        },
+        {
+            "name": "msvc-mt-debug-install",
+            "configurePreset": "msvc-mt",
             "jobs": 0,
             "configuration": "RelWithDebInfo",
             "targets": [
                 "install"
             ]
         },
-        
         {
-            "name": "vs2022d",
-            "configurePreset": "vs2022",
+            "name": "msvc-md-debug-install",
+            "configurePreset": "msvc-md",
             "jobs": 0,
-            "configuration": "Debug"
+            "configuration": "RelWithDebInfo",
+            "targets": [
+                "install"
+            ]
         },
-                {
-            "name": "vs2022d-install",
-            "configurePreset": "vs2022",
+        {
+            "name": "msvc-mt-release-install",
+            "configurePreset": "msvc-mt",
             "jobs": 0,
-            "configuration": "Debug",
+            "configuration": "RelWithDebInfo",
+            "targets": [
+                "install"
+            ]
+        },
+        {
+            "name": "msvc-md-release-install",
+            "configurePreset": "msvc-md",
+            "jobs": 0,
+            "configuration": "RelWithDebInfo",
             "targets": [
                 "install"
             ]
         }
+        
+        
+
     ],
     "testPresets": [
     ],
@@ -64,11 +110,11 @@
             "steps": [
                 {
                     "type": "configure",
-                    "name": "vs2022"
+                    "name": "msvc-md"
                 },
                 {
                     "type": "build",
-                    "name": "vs2022r-install"
+                    "name": "msvc-md-release-install"
                 }
             ]
         },
@@ -77,11 +123,11 @@
             "steps": [
                 {
                     "type": "configure",
-                    "name": "vs2022"
+                    "name": "msvc-mt"
                 },
                 {
                     "type": "build",
-                    "name": "vs2022d-install"
+                    "name": "msvc-mt-debug-install"
                 }
             ]
         }
