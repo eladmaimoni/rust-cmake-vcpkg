@@ -19,6 +19,8 @@ target_link_libraries(
     by2
     ${BY2_LIBRARY_LINKAGE}
     ccore
+    PRIVATE
+    by2_default_compiler_flags
 )
 
 setup_target_includes_for_install(by2 by2)

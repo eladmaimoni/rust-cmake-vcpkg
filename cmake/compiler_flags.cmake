@@ -47,17 +47,17 @@ set(ULTRA_ALL_FLAGS_23
     $<$<CXX_COMPILER_ID:Clang>:-std=c++2b> # https://discourse.llvm.org/t/linux-what-is-the-status-of-libc-in-llvm-15-apt-packages-ranges-format/65348/4
 )
 
-add_library(ultra_strict_compiler_flags INTERFACE)
+add_library(by2_default_compiler_flags INTERFACE)
 
 target_compile_options(
-    ultra_strict_compiler_flags
+    by2_default_compiler_flags
     INTERFACE
     $<$<COMPILE_LANGUAGE:CXX>:${ULTRA_ALL_FLAGS_23}>
 )
 
 
 target_compile_definitions(
-    ultra_strict_compiler_flags
+    by2_default_compiler_flags
     INTERFACE
     ${ULTRA_ALL_DEFINITIONS}
 )
@@ -68,7 +68,7 @@ target_compile_definitions(
 # $<$<CXX_COMPILER_ID:Clang>: -fexperimental-library -stdlib=libc++>
 # )
 target_compile_features(
-    ultra_strict_compiler_flags
+    by2_default_compiler_flags
     INTERFACE
     cxx_std_23
 )

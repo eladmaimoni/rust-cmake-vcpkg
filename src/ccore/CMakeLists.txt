@@ -11,6 +11,8 @@ target_link_libraries(
     ccore
     PUBLIC
     spdlog::spdlog
+    PRIVATE
+    by2_default_compiler_flags
 )
 
 setup_target_includes_for_install(ccore ccore)
