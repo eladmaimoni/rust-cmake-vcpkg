@@ -23,6 +23,8 @@ target_link_libraries(
     by2_default_compiler_flags
 )
 
+set_default_library_properties(by2)
+
 setup_target_includes_for_install(by2 by2)
 add_target_to_global_export_set(by2)
 

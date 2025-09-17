@@ -34,10 +34,9 @@ set(ULTRA_ALL_FLAGS
     ${ULTRA_TREAT_WARNING_AS_ERROR}
 )
 
-#set(ULTRA_ALL_DEFINITIONS
-#    $<$<CONFIG:Profile>:ULTRA_PROFILING_ENABLED>
-#    )
-
+# set(ULTRA_ALL_DEFINITIONS
+# $<$<CONFIG:Profile>:ULTRA_PROFILING_ENABLED>
+# )
 set(ULTRA_ALL_DEFINITIONS
     $<$<OR:$<CONFIG:Profile>,$<CONFIG:Debug>>:ULTRA_PROFILING_ENABLED>
 )
@@ -54,7 +53,6 @@ target_compile_options(
     INTERFACE
     $<$<COMPILE_LANGUAGE:CXX>:${ULTRA_ALL_FLAGS_23}>
 )
-
 
 target_compile_definitions(
     by2_default_compiler_flags
@@ -87,6 +85,18 @@ target_compile_definitions(
     ${ULTRA_ALL_DEFINITIONS}
 )
 
+function(set_default_library_properties target_name)
+    if(VCPKG_TARGET_TRIPLET STREQUAL "x64-windows-static")
+        set_property(TARGET ${target_name} PROPERTY
+            MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    else()
+    endif()
+    if (BY2_SHARED)
+        set_target_properties(${target_name} PROPERTIES
+            POSITION_INDEPENDENT_CODE ON
+        )
+    endif()
+endfunction()
 
 function(set_no_warnings_compiler_flags target_name)
     target_compile_features(

@@ -15,6 +15,7 @@ target_link_libraries(
     by2_default_compiler_flags
 )
 
+set_default_library_properties(ccore)
 setup_target_includes_for_install(ccore ccore)
 add_target_to_global_export_set(ccore)
 

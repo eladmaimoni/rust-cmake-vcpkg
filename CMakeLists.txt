@@ -17,6 +17,7 @@ if(BY2_SHARED)
     # set_target_properties(alpha PROPERTIES POSITION_INDEPENDENT_CODE ON)
 endif()
 
+
 include(cmake/version_details.cmake)
 include(cmake/compiler_flags.cmake)
 include(cmake/global_setup.cmake)
