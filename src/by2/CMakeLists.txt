@@ -15,6 +15,15 @@ add_library(
     by2.cpp
 )
 
+# Define export/import related compile definitions when building a shared lib
+target_compile_definitions(
+    by2
+    PRIVATE
+        $<$<BOOL:${BY2_SHARED}>:BY2_BUILD_SHARED>
+    PUBLIC
+        $<$<BOOL:${BY2_SHARED}>:BY2_USE_SHARED>
+)
+
 target_link_libraries(
     by2
     ${BY2_LIBRARY_LINKAGE}
