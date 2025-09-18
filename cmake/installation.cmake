@@ -1,6 +1,5 @@
 include(CMakePackageConfigHelpers)
 
-
 function(setup_target_includes_for_install
     target_name
     public_include_folder # the public include folder
@@ -72,7 +71,7 @@ function(add_target_to_global_export_set
     # to be copied into the bin directory
 
     #
-        # Use conditional generator expression: emits 'debug' for Debug config, empty otherwise
+    # Use conditional generator expression: emits 'debug' for Debug config, empty otherwise
     # NOTE: Previous logic produced an empty prefix for non-Debug configs and then
     # constructed "/lib" (leading slash) causing installs to go to C:/lib.
     # Embed the trailing slash in the generator expression and concatenate without
@@ -125,9 +124,13 @@ function(add_target_to_global_export_set
         target_type STREQUAL SHARED_LIBRARY OR
         target_type STREQUAL EXECUTABLE
     )
+        # For shared libraries/executables we want the PDB to be installed
+        # next to the runtime artifact (DLL/exe). Install it into the
+        # runtime/bin destination so consumers who copy the DLL also get
+        # the corresponding PDB beside it on Windows.
         install(
             FILES $<TARGET_PDB_FILE:${target_name}>
-            DESTINATION ${lib_dest}
+            DESTINATION ${bin_dest}
             OPTIONAL
         )
 
@@ -147,7 +150,6 @@ function(setup_target_for_install
     setup_target_for_find_package(${target_name})
     add_target_to_global_export_set(${target_name})
 endfunction()
-
 
 # Main: generate and install a pkg-config file for a CMake target
 #
@@ -184,16 +186,18 @@ function(generate_pkgconfig target)
     get_target_link_dependencies(${target} dependencies)
 
     set(debug_libs "")
-    set(release_libs "")  # fixed original typo release_l`ibs
+    set(release_libs "") # fixed original typo release_l`ibs
     set(debug_dirs "")
     set(release_dirs "")
     set(include_dirs "")
 
     foreach(dep IN LISTS dependencies)
         append_target_output_file_and_output_dir(${dep} debug_libs debug_dirs release_libs release_dirs)
+
         # Gather PUBLIC/INTERFACE include directories
         if(TARGET ${dep})
             get_target_property(dep_includes ${dep} INTERFACE_INCLUDE_DIRECTORIES)
+
             if(dep_includes)
                 list(APPEND include_dirs ${dep_includes})
             endif()
@@ -208,21 +212,25 @@ function(generate_pkgconfig target)
 
     # Normalize include dirs (skip generator expressions)
     set(_norm_includes "")
+
     foreach(inc IN LISTS include_dirs)
         if(inc AND NOT inc MATCHES "^[\$<]" AND EXISTS "${inc}")
             file(TO_CMAKE_PATH "${inc}" _inc_norm)
             list(APPEND _norm_includes "${_inc_norm}")
         endif()
     endforeach()
+
     list(REMOVE_DUPLICATES _norm_includes)
 
     function(_join_with_prefix out_var prefix input_list)
         set(_tmp "")
+
         foreach(item IN LISTS input_list)
             if(NOT item STREQUAL "")
                 list(APPEND _tmp "${prefix}${item}")
             endif()
         endforeach()
+
         string(REPLACE ";" " " _joined "${_tmp}")
         set(${out_var} "${_joined}" PARENT_SCOPE)
     endfunction()
@@ -232,12 +240,14 @@ function(generate_pkgconfig target)
     # Prepare -L paths (validated existing directories only)
     function(_emit_L out_var dirs)
         set(_tmp "")
+
         foreach(d IN LISTS dirs)
             if(d AND IS_DIRECTORY "${d}")
                 file(TO_CMAKE_PATH "${d}" _d_norm)
                 list(APPEND _tmp "-L${_d_norm}")
             endif()
         endforeach()
+
         string(REPLACE ";" " " _joined "${_tmp}")
         set(${out_var} "${_joined}" PARENT_SCOPE)
     endfunction()
@@ -247,23 +257,25 @@ function(generate_pkgconfig target)
 
     function(_emit_l out_var names)
         set(_tmp "")
+
         foreach(n IN LISTS names)
             if(NOT n STREQUAL "")
                 list(APPEND _tmp "-l${n}")
             endif()
         endforeach()
+
         string(REPLACE ";" " " _joined "${_tmp}")
         set(${out_var} "${_joined}" PARENT_SCOPE)
     endfunction()
 
-    _emit_l(_libs_debug   "${debug_libs}")
+    _emit_l(_libs_debug "${debug_libs}")
     _emit_l(_libs_release "${release_libs}")
 
     # Compose pkg-config contents
     set(_prefix "${CMAKE_INSTALL_PREFIX}")
     file(TO_CMAKE_PATH "${_prefix}" _prefix_norm)
 
-    set(pc_file_debug   "${CMAKE_CURRENT_BINARY_DIR}/${target}-debug.pc")
+    set(pc_file_debug "${CMAKE_CURRENT_BINARY_DIR}/${target}-debug.pc")
     set(pc_file_release "${CMAKE_CURRENT_BINARY_DIR}/${target}.pc")
 
     set(_content_debug "prefix=${_prefix_norm}\n")
@@ -291,9 +303,8 @@ function(generate_pkgconfig target)
     file(WRITE "${pc_file_release}" "${_content_release}")
 
     install(FILES "${pc_file_release}" DESTINATION "lib/pkgconfig")
-    install(FILES "${pc_file_debug}"   DESTINATION "debug/lib/pkgconfig" RENAME "${target}.pc")
+    install(FILES "${pc_file_debug}" DESTINATION "debug/lib/pkgconfig" RENAME "${target}.pc")
 endfunction()
-
 
 function(install_dependency_manifest_for_target target_name)
     get_target_link_dependencies(${target_name} dependencies)
