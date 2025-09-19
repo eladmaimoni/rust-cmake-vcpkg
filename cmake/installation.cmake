@@ -191,6 +191,18 @@ function(generate_pkgconfig target)
     set(release_dirs "")
     set(include_dirs "")
 
+    # Ensure the target itself is included in the generated pkg-config
+    # so consumers know to link with the main library (e.g., -lby2).
+    append_target_output_file_and_output_dir(${target} debug_libs debug_dirs release_libs release_dirs)
+
+    if(TARGET ${target})
+        get_target_property(target_includes ${target} INTERFACE_INCLUDE_DIRECTORIES)
+
+        if(target_includes)
+            list(APPEND include_dirs ${target_includes})
+        endif()
+    endif()
+
     foreach(dep IN LISTS dependencies)
         append_target_output_file_and_output_dir(${dep} debug_libs debug_dirs release_libs release_dirs)
 

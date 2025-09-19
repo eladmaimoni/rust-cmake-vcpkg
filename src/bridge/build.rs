@@ -14,7 +14,7 @@ struct BuildDetails {
     package_config_path: PathBuf,
 }
 
-fn deduce_build_details(target_os: &str, target_arch: &str, build_profile: &str) -> BuildDetails {
+fn deduce_build_details(target_os: &str, _target_arch: &str, build_profile: &str) -> BuildDetails {
     match target_os {
         "windows" => {
             // NOTE: The C/C++ objects produced by the cxx crate and its build
@@ -143,6 +143,214 @@ fn main() {
         .expect("Couldn't write bindings!");
 
     println!("cargo:warning=Build details: {:#?}", build_details);
+
+    // Parse the generated pkg-config file to determine link paths and libs
+    // The package_config_path is relative to the install prefix, so build the
+    // absolute path we can read.
+    // Use the pkg-config crate to probe the generated .pc file. We set
+    // PKG_CONFIG_LIBDIR to the install's pkgconfig dir so probe finds the
+    // by2.pc that CMake produced. If probe fails we fall back to the
+    // previous manual parsing logic.
+    let pkgconfig_dir = PathBuf::from(&cmake_install_dir).join(if build_profile == "debug" {
+        "debug/lib/pkgconfig"
+    } else {
+        "lib/pkgconfig"
+    });
+
+    // Try using pkg-config crate. Set PKG_CONFIG_LIBDIR so the probe finds
+    // the .pc file that CMake generated inside our install prefix.
+    unsafe {
+        env::set_var("PKG_CONFIG_LIBDIR", pkgconfig_dir.as_os_str());
+    }
+
+    match pkg_config::Config::new().probe("by2") {
+        Ok(library) => {
+            println!("cargo:warning=pkg-config probe succeeded: {:#?}", library);
+            // Emit link search dirs and link libs. The pkg-config crate gives us
+            // the necessary link paths and lib names already resolved.
+            for path in library.link_paths {
+                let p = path.to_string_lossy().replace("\\", "/");
+                println!("cargo:warning=link path: {}", p);
+                println!("cargo:rustc-link-search=native={}", p);
+            }
+            for lib in library.libs {
+                println!("cargo:warning=link lib: {}", lib);
+                if build_profile == "debug" {
+                    println!("cargo:rustc-link-lib=dylib={}", lib);
+                } else {
+                    println!("cargo:rustc-link-lib=static={}", lib);
+                }
+            }
+        }
+        Err(e) => {
+            println!("cargo:warning=pkg-config probe failed: {}", e);
+            // fallback to previous manual parsing behavior
+            let pc_path =
+                PathBuf::from(&cmake_install_dir).join(&build_details.package_config_path);
+            if pc_path.exists() {
+                println!(
+                    "cargo:warning=Falling back to manual parse for: {}",
+                    pc_path.display()
+                );
+                if let Ok(contents) = std::fs::read_to_string(&pc_path) {
+                    // Manual parsing preserved from previous version
+                    let mut link_paths: Vec<String> = Vec::new();
+                    let mut libs: Vec<String> = Vec::new();
+
+                    for line in contents.lines() {
+                        if line.starts_with("Libs:") {
+                            let rest = line.trim_start_matches("Libs:").trim();
+                            for token in rest.split_whitespace() {
+                                if token.starts_with("-L") {
+                                    let mut path = token.trim_start_matches("-L").to_string();
+                                    if path.contains("${prefix}") {
+                                        path = path.replace("${prefix}", &cmake_install_dir);
+                                    }
+                                    if path.contains("${libdir}") {
+                                        let libdir = if build_profile == "debug" {
+                                            format!("{}/debug/lib", cmake_install_dir)
+                                        } else {
+                                            format!("{}/lib", cmake_install_dir)
+                                        };
+                                        path = path.replace("${libdir}", &libdir);
+                                    }
+                                    let path = path.replace("\\", "/");
+                                    link_paths.push(path.clone());
+                                } else if token.starts_with("-l") {
+                                    let lib = token.trim_start_matches("-l").to_string();
+                                    libs.push(lib);
+                                }
+                            }
+                        }
+                    }
+
+                    let fallback_lib = format!("{}/lib", cmake_install_dir).replace("\\", "/");
+                    let fallback_debug_lib =
+                        format!("{}/debug/lib", cmake_install_dir).replace("\\", "/");
+                    link_paths.push(fallback_lib.clone());
+                    link_paths.push(fallback_debug_lib.clone());
+
+                    let mut emitted = std::collections::HashSet::new();
+                    for p in &link_paths {
+                        if emitted.insert(p.clone()) {
+                            println!("cargo:warning=link path: {}", p);
+                            println!("cargo:rustc-link-search=native={}", p);
+                        }
+                    }
+
+                    for lib in &libs {
+                        println!("cargo:warning=link lib: {}", lib);
+                        let filename = format!("{}.lib", lib);
+                        let mut found = false;
+                        for p in &link_paths {
+                            let candidate = Path::new(p).join(&filename);
+                            if candidate.exists() {
+                                found = true;
+                                break;
+                            }
+                        }
+                        if !found {
+                            println!(
+                                "cargo:warning=Skipping link for '{}': {} not found in link paths",
+                                lib, filename
+                            );
+                            continue;
+                        }
+                        if build_profile == "debug" {
+                            println!("cargo:rustc-link-lib=dylib={}", lib);
+                        } else {
+                            println!("cargo:rustc-link-lib=static={}", lib);
+                        }
+                    }
+                }
+            } else {
+                println!(
+                    "cargo:warning=Pkg-config file not found at {}",
+                    pc_path.display()
+                );
+            }
+        }
+    }
+
+    // Also add conventional install lib directories as fallback so the
+    // linker can find import/static libraries regardless of how the pkg-config
+    // file was generated. This helps when the import library (by2.lib) is
+    // placed in `${prefix}/lib` while the pkg-config references `${prefix}/debug/lib`.
+    let fallback_lib = format!("{}/lib", cmake_install_dir);
+    let fallback_debug_lib = format!("{}/debug/lib", cmake_install_dir);
+    println!(
+        "cargo:warning=Adding fallback link search: {}",
+        fallback_lib
+    );
+    println!(
+        "cargo:rustc-link-search=native={}",
+        fallback_lib.replace("\\", "/")
+    );
+    println!(
+        "cargo:warning=Adding fallback link search: {}",
+        fallback_debug_lib
+    );
+    println!(
+        "cargo:rustc-link-search=native={}",
+        fallback_debug_lib.replace("\\", "/")
+    );
+
+    // Copy any installed DLLs into the test runtime directory so the
+    // test harness can find them at runtime. On Windows the loader looks
+    // in the executable directory and PATH. Cargo places test binaries
+    // under <workspace_root>/target/<profile>/deps so copy DLLs there.
+    let workspace_root = get_workspace_root();
+    let runtime_deps_dir = workspace_root
+        .join("target")
+        .join(&build_profile)
+        .join("deps");
+
+    // Common install bin directories to check
+    let bin_dirs = vec![
+        PathBuf::from(format!("{}/bin", cmake_install_dir)),
+        PathBuf::from(format!("{}/debug/bin", cmake_install_dir)),
+    ];
+
+    // Ensure the runtime deps directory exists
+    if let Err(e) = std::fs::create_dir_all(&runtime_deps_dir) {
+        println!(
+            "cargo:warning=Failed to create runtime deps dir {}: {}",
+            runtime_deps_dir.display(),
+            e
+        );
+    }
+
+    for bin in bin_dirs {
+        if !bin.exists() {
+            continue;
+        }
+        if let Ok(entries) = std::fs::read_dir(&bin) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Some(ext) = path.extension() {
+                    if ext.to_string_lossy().eq_ignore_ascii_case("dll") {
+                        let file_name = path.file_name().unwrap();
+                        let dest = runtime_deps_dir.join(file_name);
+                        // Copy the DLL to the runtime deps dir
+                        if let Err(e) = std::fs::copy(&path, &dest) {
+                            println!(
+                                "cargo:warning=Failed to copy DLL {} -> {}: {}",
+                                path.display(),
+                                dest.display(),
+                                e
+                            );
+                        } else {
+                            println!(
+                                "cargo:warning=Copied DLL {} -> {}",
+                                path.display(),
+                                dest.display()
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // // Configure cxx build: include C++ headers from the ccore source dir and vcpkg include
     // Configure cxx build: compile the cxx-generated glue so the bridge symbols
