@@ -193,7 +193,43 @@ function(generate_pkgconfig target)
 
     # Ensure the target itself is included in the generated pkg-config
     # so consumers know to link with the main library (e.g., -lby2).
+    #
+    # On Windows with multi-config installs, if the target is a SHARED
+    # library then the debug pkg-config should reference only the main
+    # target's debug/runtime import library (e.g., by2.dll / by2.lib).
+    # The transitive static dependencies should NOT be listed in the
+    # debug .pc since the C++ project builds as a single shared binary
+    # for debug. For Release (static linking) we keep the full
+    # transitive list so consumers can link all required static libs.
     append_target_output_file_and_output_dir(${target} debug_libs debug_dirs release_libs release_dirs)
+    get_target_property(_target_type ${target} TYPE)
+
+    # Treat any type containing 'SHARED' as a shared library for robustness
+    if(_target_type MATCHES "SHARED")
+        # If shared, limit debug_libs/debug_dirs to the main target only.
+        # Remove any entries that were added for dependencies.
+        set(_only_libs "")
+        set(_only_dirs "")
+        set(_only_rel_libs "")
+        set(_only_rel_dirs "")
+
+        # Recompute using only the main target (macro expects 5 args)
+        append_target_output_file_and_output_dir(${target} _only_libs _only_dirs _only_rel_libs _only_rel_dirs)
+
+        # Replace debug lists with the restricted lists. If the temporary
+        # list is empty for any reason, compute the debug output name and
+        # fallback to the conventional install debug libdir so the .pc
+        # always contains the main target import library.
+        if(NOT _only_libs)
+            # Compute output names (out_debug out_release)
+            get_target_output_name(${target} _out_debug _out_release)
+            set(debug_libs "${_out_debug}")
+            set(debug_dirs "${CMAKE_INSTALL_PREFIX}/debug/lib")
+        else()
+            set(debug_libs "${_only_libs}")
+            set(debug_dirs "${_only_dirs}")
+        endif()
+    endif()
 
     if(TARGET ${target})
         get_target_property(target_includes ${target} INTERFACE_INCLUDE_DIRECTORIES)
@@ -203,8 +239,54 @@ function(generate_pkgconfig target)
         endif()
     endif()
 
+    # If the main target is a shared library, do not include transitive
+    # dependencies in the debug pkg-config. The shared debug build is
+    # distributed as a single DLL and consumers only need the import
+    # library for the main target at runtime.
+    set(_omit_transitive_debug FALSE)
+
+    if(_target_type STREQUAL "SHARED_LIBRARY")
+        set(_omit_transitive_debug TRUE)
+    endif()
+
     foreach(dep IN LISTS dependencies)
-        append_target_output_file_and_output_dir(${dep} debug_libs debug_dirs release_libs release_dirs)
+        # Use temporary containers to collect outputs per-dependency so we can
+        # selectively merge only the release-side when omitting transitive
+        # debug deps for shared main targets.
+        set(_tmp_dbg_libs "")
+        set(_tmp_dbg_dirs "")
+        set(_tmp_rel_libs "")
+        set(_tmp_rel_dirs "")
+
+        append_target_output_file_and_output_dir(${dep} _tmp_dbg_libs _tmp_dbg_dirs _tmp_rel_libs _tmp_rel_dirs)
+
+        if(_omit_transitive_debug)
+            # Append only the release-side findings; ignore debug-side for transitive deps.
+            foreach(_rl IN LISTS _tmp_rel_libs)
+                list(APPEND release_libs ${_rl})
+            endforeach()
+
+            foreach(_rd IN LISTS _tmp_rel_dirs)
+                list(APPEND release_dirs ${_rd})
+            endforeach()
+        else()
+            # Merge both debug and release findings.
+            foreach(_dl IN LISTS _tmp_dbg_libs)
+                list(APPEND debug_libs ${_dl})
+            endforeach()
+
+            foreach(_dd IN LISTS _tmp_dbg_dirs)
+                list(APPEND debug_dirs ${_dd})
+            endforeach()
+
+            foreach(_rl IN LISTS _tmp_rel_libs)
+                list(APPEND release_libs ${_rl})
+            endforeach()
+
+            foreach(_rd IN LISTS _tmp_rel_dirs)
+                list(APPEND release_dirs ${_rd})
+            endforeach()
+        endif()
 
         # Gather PUBLIC/INTERFACE include directories
         if(TARGET ${dep})
@@ -221,6 +303,53 @@ function(generate_pkgconfig target)
     list(REMOVE_DUPLICATES debug_dirs)
     list(REMOVE_DUPLICATES release_dirs)
     list(REMOVE_DUPLICATES include_dirs)
+
+    # For shared main targets ensure debug .pc references the main
+    # import library and conventional install lib directories so the
+    # pkg-config probe can resolve the import library at link time.
+    if(_target_type MATCHES "SHARED")
+        get_target_output_name(${target} _out_debug _out_release)
+        append_to_list_if_not_found(debug_libs "${_out_debug}")
+        append_to_list_if_not_found(debug_dirs "${CMAKE_INSTALL_PREFIX}/lib")
+        append_to_list_if_not_found(debug_dirs "${CMAKE_INSTALL_PREFIX}/debug/lib")
+    endif()
+
+    # Recompute the emitted debug lib paths and libs so the previously
+    # emitted `_libpaths_debug` / `_libs_debug` reflect any changes we
+    # made above (e.g., ensuring the main target is present).
+    set(_tmp_lp "")
+
+    foreach(d IN LISTS debug_dirs)
+        if(d AND IS_DIRECTORY "${d}")
+            file(TO_CMAKE_PATH "${d}" _d_norm)
+            list(APPEND _tmp_lp "-L${_d_norm}")
+        endif()
+    endforeach()
+
+    string(REPLACE ";" " " _joined "${_tmp_lp}")
+    set(_libpaths_debug "${_joined}")
+
+    set(_tmp_l "")
+
+    foreach(n IN LISTS debug_libs)
+        if(NOT n STREQUAL "")
+            list(APPEND _tmp_l "-l${n}")
+        endif()
+    endforeach()
+
+    string(REPLACE ";" " " _joined "${_tmp_l}")
+    set(_libs_debug "${_joined}")
+
+    # Don't attempt to perform install-time filesystem checks at configure
+    # time to decide which libraries should be advertised. The configure
+    # step runs before "install" has placed artifacts under
+    # ${CMAKE_INSTALL_PREFIX} so such checks are fragile and can cause
+    # legitimate transitive dependencies to be omitted from the generated
+    # pkg-config file. Instead, emit the computed dependency lists as-is
+    # and allow the consumer (build.rs / pkg-config probe) to verify
+    # library availability at link time.
+
+    # (debug_libs/release_libs remain as computed above)
 
     # Normalize include dirs (skip generator expressions)
     set(_norm_includes "")
@@ -283,6 +412,20 @@ function(generate_pkgconfig target)
     _emit_l(_libs_debug "${debug_libs}")
     _emit_l(_libs_release "${release_libs}")
 
+    # If we intentionally omitted transitive debug deps for a shared main
+    # target, prefer the main-target-only libpaths/libs computed earlier
+    # so the debug .pc references only the import library for the shared
+    # DLL and not its transitive static deps.
+    if(DEFINED _omit_transitive_debug AND _omit_transitive_debug)
+        if(DEFINED _only_dirs)
+            _emit_L(_libpaths_debug "${_only_dirs}")
+        endif()
+
+        if(DEFINED _only_libs)
+            _emit_l(_libs_debug "${_only_libs}")
+        endif()
+    endif()
+
     # Compose pkg-config contents
     set(_prefix "${CMAKE_INSTALL_PREFIX}")
     file(TO_CMAKE_PATH "${_prefix}" _prefix_norm)
@@ -290,6 +433,14 @@ function(generate_pkgconfig target)
     set(pc_file_debug "${CMAKE_CURRENT_BINARY_DIR}/${target}-debug.pc")
     set(pc_file_release "${CMAKE_CURRENT_BINARY_DIR}/${target}.pc")
 
+    # For multi-config installs on Windows we always emit the conventional
+    # multi-config libdir layout: ${prefix}/debug/lib for Debug and
+    # ${prefix}/lib for Release. Emit these as pkg-config variables so
+    # consumers can resolve them relative to the install prefix. We must
+    # escape the "$" when writing the file so pkg-config sees the
+    # literal "${prefix}" variable.
+
+    # Emit prefix without escaping so pkg-config understands paths on Windows
     set(_content_debug "prefix=${_prefix_norm}\n")
     string(APPEND _content_debug "exec_prefix=\${prefix}\n")
     string(APPEND _content_debug "libdir=\${prefix}/debug/lib\n")
@@ -298,7 +449,15 @@ function(generate_pkgconfig target)
     string(APPEND _content_debug "Description: ${arg_DESCRIPTION} (debug)\n")
     string(APPEND _content_debug "Version: ${arg_VERSION}\n")
     string(APPEND _content_debug "Cflags: ${_cflags} -I\${includedir}\n")
-    string(APPEND _content_debug "Libs: -L\${libdir} ${_libpaths_debug} ${_libs_debug}\n")
+
+    # If main target is a shared library, explicitly reference its import
+    # library in the debug pkg-config so consumers link the DLL import lib.
+    if(_target_type MATCHES "SHARED")
+        get_target_output_name(${target} _out_debug _out_release)
+        string(APPEND _content_debug "Libs: -L\${libdir} ${_libpaths_debug} -l${_out_debug}\n")
+    else()
+        string(APPEND _content_debug "Libs: -L\${libdir} ${_libpaths_debug} ${_libs_debug}\n")
+    endif()
 
     file(WRITE "${pc_file_debug}" "${_content_debug}")
 

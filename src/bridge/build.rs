@@ -1,5 +1,4 @@
 use std::env;
-use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -11,7 +10,6 @@ struct BuildDetails {
     /// The CMake preset to use for this build (e.g. "vs2022r-install")
     cmake_config_preset: &'static str,
     cmake_build_preset: &'static str,
-    package_config_path: PathBuf,
 }
 
 fn deduce_build_details(target_os: &str, _target_arch: &str, build_profile: &str) -> BuildDetails {
@@ -24,35 +22,34 @@ fn deduce_build_details(target_os: &str, _target_arch: &str, build_profile: &str
             // `cargo test` (PROFILE=debug) we map the debug profile to the
             // CMake RelWithDebInfo install preset so the installed C++ libs
             // use release-like runtime settings and match the cxx bridge.
-            let (cmake_config_preset, cmake_build_preset, package_config_path) = match build_profile
-            {
-                // Build using the release install preset. The project's
-                // installation step places artifacts under lib/Release (see
-                // cmake/installation.cmake which maps RelWithDebInfo -> Release
-                // for install layout), so use lib/Release here.
-                // "debug" => {
-                //     // https://github.com/rust-lang/rust/issues/39016#issuecomment-2391095973
-                //     // Don't link the default CRT
-                //     // println!("cargo::rustc-link-arg=/nodefaultlib:msvcrt");
-                //     // Link the debug CRT instead
-                //     // println!("cargo::rustc-link-arg=/defaultlib:msvcrtd");
-                //     ("windows-debug-install", "lib/Debug", "debug/lib")
-                // }
-                "debug" => (
-                    "msvc-mt",
-                    "msvc-mt-debug-install",
-                    "debug/lib/pkgconfig/by2.pc",
-                ),
-                "release" => ("msvc-md", "msvc-md-release-install", "lib/pkgconfig/by2.pc"),
-                _ => {
-                    panic!("Unsupported build profile: {}", build_profile);
-                }
-            };
+            let (cmake_config_preset, cmake_build_preset, _package_config_path) =
+                match build_profile {
+                    // Build using the release install preset. The project's
+                    // installation step places artifacts under lib/Release (see
+                    // cmake/installation.cmake which maps RelWithDebInfo -> Release
+                    // for install layout), so use lib/Release here.
+                    // "debug" => {
+                    //     // https://github.com/rust-lang/rust/issues/39016#issuecomment-2391095973
+                    //     // Don't link the default CRT
+                    //     // println!("cargo::rustc-link-arg=/nodefaultlib:msvcrt");
+                    //     // Link the debug CRT instead
+                    //     // println!("cargo::rustc-link-arg=/defaultlib:msvcrtd");
+                    //     ("windows-debug-install", "lib/Debug", "debug/lib")
+                    // }
+                    "debug" => (
+                        "msvc-mt",
+                        "msvc-mt-debug-install",
+                        "debug/lib/pkgconfig/by2.pc",
+                    ),
+                    "release" => ("msvc-md", "msvc-md-release-install", "lib/pkgconfig/by2.pc"),
+                    _ => {
+                        panic!("Unsupported build profile: {}", build_profile);
+                    }
+                };
 
             BuildDetails {
                 cmake_config_preset,
                 cmake_build_preset,
-                package_config_path: PathBuf::from(&package_config_path),
             }
         }
         _ => {

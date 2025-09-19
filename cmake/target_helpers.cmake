@@ -104,7 +104,8 @@ macro(append_target_output_file_and_output_dir target debug_libs debug_dirs rele
             get_target_property(imported_implib_debug ${target} IMPORTED_IMPLIB_DEBUG)
             get_target_property(imported_location_debug ${target} IMPORTED_LOCATION_DEBUG)
 
-            get_target_output_name(${target} output_name_release output_name_debug)
+            # get_target_output_name expects (tgt out_debug out_release)
+            get_target_output_name(${target} output_name_debug output_name_release)
 
             if(imported_implib_release)
                 set(release_location "${imported_implib_release}")
