@@ -133,16 +133,16 @@ macro(append_target_output_file_and_output_dir target debug_libs debug_dirs rele
             get_filename_component(release_dir "${release_location}" DIRECTORY) # directory
             get_filename_component(release_lib_name "${release_location}" NAME_WE) # name without extension
 
-            LIST(APPEND debug_libs "${debug_lib_name}")
-            LIST(APPEND debug_dirs "${debug_dir}")
-            LIST(APPEND release_libs "${release_lib_name}")
-            LIST(APPEND release_dirs "${release_dir}")
+            LIST(APPEND ${debug_libs} "${debug_lib_name}")
+            LIST(APPEND ${debug_dirs} "${debug_dir}")
+            LIST(APPEND ${release_libs} "${release_lib_name}")
+            LIST(APPEND ${release_dirs} "${release_dir}")
         endif()
     elseif(target MATCHES "^-l(.+)$")
         # dependency is a raw library dependency
         string(REGEX REPLACE "^-l" "" _lname "${target}")
-        list(APPEND debug_libs "${_lname}")
-        list(APPEND release_libs "${_lname}")
+        list(APPEND ${debug_libs} "${_lname}")
+        list(APPEND ${release_libs} "${_lname}")
     endif()
 endmacro()
 
