@@ -70,7 +70,7 @@ fn get_workspace_root() -> PathBuf {
 }
 
 fn main() {
-    let out_dir = env::var("OUT_DIR").unwrap();
+    let out_dir = env::var("OUT_DIR").unwrap().replace('\\', "/");
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
     let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
     let build_profile = std::env::var("PROFILE").unwrap();
