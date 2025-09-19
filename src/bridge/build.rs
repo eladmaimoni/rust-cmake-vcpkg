@@ -184,91 +184,93 @@ fn main() {
         }
         Err(e) => {
             println!("cargo:warning=pkg-config probe failed: {}", e);
-            // fallback to previous manual parsing behavior
-            let pc_path =
-                PathBuf::from(&cmake_install_dir).join(&build_details.package_config_path);
-            if pc_path.exists() {
-                println!(
-                    "cargo:warning=Falling back to manual parse for: {}",
-                    pc_path.display()
-                );
-                if let Ok(contents) = std::fs::read_to_string(&pc_path) {
-                    // Manual parsing preserved from previous version
-                    let mut link_paths: Vec<String> = Vec::new();
-                    let mut libs: Vec<String> = Vec::new();
+            panic!("pkg-config probe failed: {}", e);
+            // // fallback to previous manual parsing behavior
+            // let package_config_path =
+            //     PathBuf::from(&cmake_install_dir).join(&build_details.package_config_path);
+            // if package_config_path.exists() {
+            //     println!(
+            //         "cargo:warning=Falling back to manual parse for: {}",
+            //         package_config_path.display()
+            //     );
 
-                    for line in contents.lines() {
-                        if line.starts_with("Libs:") {
-                            let rest = line.trim_start_matches("Libs:").trim();
-                            for token in rest.split_whitespace() {
-                                if token.starts_with("-L") {
-                                    let mut path = token.trim_start_matches("-L").to_string();
-                                    if path.contains("${prefix}") {
-                                        path = path.replace("${prefix}", &cmake_install_dir);
-                                    }
-                                    if path.contains("${libdir}") {
-                                        let libdir = if build_profile == "debug" {
-                                            format!("{}/debug/lib", cmake_install_dir)
-                                        } else {
-                                            format!("{}/lib", cmake_install_dir)
-                                        };
-                                        path = path.replace("${libdir}", &libdir);
-                                    }
-                                    let path = path.replace("\\", "/");
-                                    link_paths.push(path.clone());
-                                } else if token.starts_with("-l") {
-                                    let lib = token.trim_start_matches("-l").to_string();
-                                    libs.push(lib);
-                                }
-                            }
-                        }
-                    }
+            //     if let Ok(contents) = std::fs::read_to_string(&package_config_path) {
+            //         // Manual parsing preserved from previous version
+            //         let mut link_paths: Vec<String> = Vec::new();
+            //         let mut libs: Vec<String> = Vec::new();
 
-                    let fallback_lib = format!("{}/lib", cmake_install_dir).replace("\\", "/");
-                    let fallback_debug_lib =
-                        format!("{}/debug/lib", cmake_install_dir).replace("\\", "/");
-                    link_paths.push(fallback_lib.clone());
-                    link_paths.push(fallback_debug_lib.clone());
+            //         for line in contents.lines() {
+            //             if line.starts_with("Libs:") {
+            //                 let rest = line.trim_start_matches("Libs:").trim();
+            //                 for token in rest.split_whitespace() {
+            //                     if token.starts_with("-L") {
+            //                         let mut path = token.trim_start_matches("-L").to_string();
+            //                         if path.contains("${prefix}") {
+            //                             path = path.replace("${prefix}", &cmake_install_dir);
+            //                         }
+            //                         if path.contains("${libdir}") {
+            //                             let libdir = if build_profile == "debug" {
+            //                                 format!("{}/debug/lib", cmake_install_dir)
+            //                             } else {
+            //                                 format!("{}/lib", cmake_install_dir)
+            //                             };
+            //                             path = path.replace("${libdir}", &libdir);
+            //                         }
+            //                         let path = path.replace("\\", "/");
+            //                         link_paths.push(path.clone());
+            //                     } else if token.starts_with("-l") {
+            //                         let lib = token.trim_start_matches("-l").to_string();
+            //                         libs.push(lib);
+            //                     }
+            //                 }
+            //             }
+            //         }
 
-                    let mut emitted = std::collections::HashSet::new();
-                    for p in &link_paths {
-                        if emitted.insert(p.clone()) {
-                            println!("cargo:warning=link path: {}", p);
-                            println!("cargo:rustc-link-search=native={}", p);
-                        }
-                    }
+            //         let fallback_lib = format!("{}/lib", cmake_install_dir).replace("\\", "/");
+            //         let fallback_debug_lib =
+            //             format!("{}/debug/lib", cmake_install_dir).replace("\\", "/");
+            //         link_paths.push(fallback_lib.clone());
+            //         link_paths.push(fallback_debug_lib.clone());
 
-                    for lib in &libs {
-                        println!("cargo:warning=link lib: {}", lib);
-                        let filename = format!("{}.lib", lib);
-                        let mut found = false;
-                        for p in &link_paths {
-                            let candidate = Path::new(p).join(&filename);
-                            if candidate.exists() {
-                                found = true;
-                                break;
-                            }
-                        }
-                        if !found {
-                            println!(
-                                "cargo:warning=Skipping link for '{}': {} not found in link paths",
-                                lib, filename
-                            );
-                            continue;
-                        }
-                        if build_profile == "debug" {
-                            println!("cargo:rustc-link-lib=dylib={}", lib);
-                        } else {
-                            println!("cargo:rustc-link-lib=static={}", lib);
-                        }
-                    }
-                }
-            } else {
-                println!(
-                    "cargo:warning=Pkg-config file not found at {}",
-                    pc_path.display()
-                );
-            }
+            //         let mut emitted = std::collections::HashSet::new();
+            //         for p in &link_paths {
+            //             if emitted.insert(p.clone()) {
+            //                 println!("cargo:warning=link path: {}", p);
+            //                 println!("cargo:rustc-link-search=native={}", p);
+            //             }
+            //         }
+
+            //         for lib in &libs {
+            //             println!("cargo:warning=link lib: {}", lib);
+            //             let filename = format!("{}.lib", lib);
+            //             let mut found = false;
+            //             for p in &link_paths {
+            //                 let candidate = Path::new(p).join(&filename);
+            //                 if candidate.exists() {
+            //                     found = true;
+            //                     break;
+            //                 }
+            //             }
+            //             if !found {
+            //                 println!(
+            //                     "cargo:warning=Skipping link for '{}': {} not found in link paths",
+            //                     lib, filename
+            //                 );
+            //                 continue;
+            //             }
+            //             if build_profile == "debug" {
+            //                 println!("cargo:rustc-link-lib=dylib={}", lib);
+            //             } else {
+            //                 println!("cargo:rustc-link-lib=static={}", lib);
+            //             }
+            //         }
+            //     }
+            // } else {
+            //     println!(
+            //         "cargo:warning=Pkg-config file not found at {}",
+            //         package_config_path.display()
+            //     );
+            // }
         }
     }
 
