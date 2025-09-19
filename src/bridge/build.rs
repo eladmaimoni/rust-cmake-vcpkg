@@ -84,15 +84,46 @@ fn main() {
 
     println!("cargo:rerun-if-changed=build.rs");
 
+    let cmake_install_dir = out_dir.to_string() + "/" + CMAKE_INSTALLED_DIR;
+    let vcpkg_install_dir = out_dir.to_string() + "/" + VCPKG_INSTALLED_DIR;
+
+    println!(
+        "cargo:warning=installing CMake artifacts to: {}",
+        cmake_install_dir
+    );
+
     let status = Command::new("cmake")
         .arg("--workflow")
         .arg(format!("--preset={}", build_details.cmake_preset_workflow))
+        .arg(format!("-DCMAKE_INSTALL_PREFIX={}", cmake_install_dir))
+        .arg(format!("-DVCPKG_INSTALLED_DIR={}", vcpkg_install_dir))
         .current_dir(&workspace_root)
         .status()
         .expect("failed to run cmake configure");
     if !status.success() {
         panic!("cmake configure failed");
     }
+
+    // The bindgen::Builder is the main entry point
+    // to bindgen, and lets you build up options for
+    // the resulting bindings.
+    let bindings = bindgen::Builder::default()
+        // The input header we would like to generate
+        // bindings for.
+        .header("include/by2.h")
+        // Tell cargo to invalidate the built crate whenever any of the
+        // included header files changed.
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
+        // Finish the builder and generate the bindings.
+        .generate()
+        // Unwrap the Result and panic on failure.
+        .expect("Unable to generate bindings");
+
+    // Write the bindings to the $OUT_DIR/bindings.rs file.
+    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
+    bindings
+        .write_to_file(out_path.join("bindings.rs"))
+        .expect("Couldn't write bindings!");
 
     println!("cargo:warning=Build details: {:#?}", build_details);
 
