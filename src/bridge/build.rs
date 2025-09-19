@@ -9,7 +9,8 @@ const VCPKG_INSTALLED_DIR: &str = "vcpkg_installed";
 #[derive(Debug)]
 struct BuildDetails {
     /// The CMake preset to use for this build (e.g. "vs2022r-install")
-    cmake_preset_workflow: &'static str,
+    cmake_config_preset: &'static str,
+    cmake_build_preset: &'static str,
     package_config_path: PathBuf,
 }
 
@@ -23,7 +24,8 @@ fn deduce_build_details(target_os: &str, target_arch: &str, build_profile: &str)
             // `cargo test` (PROFILE=debug) we map the debug profile to the
             // CMake RelWithDebInfo install preset so the installed C++ libs
             // use release-like runtime settings and match the cxx bridge.
-            let (cmake_preset_workflow, package_config_path) = match build_profile {
+            let (cmake_config_preset, cmake_build_preset, package_config_path) = match build_profile
+            {
                 // Build using the release install preset. The project's
                 // installation step places artifacts under lib/Release (see
                 // cmake/installation.cmake which maps RelWithDebInfo -> Release
@@ -36,15 +38,20 @@ fn deduce_build_details(target_os: &str, target_arch: &str, build_profile: &str)
                 //     // println!("cargo::rustc-link-arg=/defaultlib:msvcrtd");
                 //     ("windows-debug-install", "lib/Debug", "debug/lib")
                 // }
-                "debug" => ("windows-debug-install", "debug/lib/pkgconfig/by2.pc"),
-                "release" => ("windows-release-install", "lib/pkgconfig/by2.pc"),
+                "debug" => (
+                    "msvc-mt",
+                    "msvc-mt-debug-install",
+                    "debug/lib/pkgconfig/by2.pc",
+                ),
+                "release" => ("msvc-md", "msvc-md-release-install", "lib/pkgconfig/by2.pc"),
                 _ => {
                     panic!("Unsupported build profile: {}", build_profile);
                 }
             };
 
             BuildDetails {
-                cmake_preset_workflow,
+                cmake_config_preset,
+                cmake_build_preset,
                 package_config_path: PathBuf::from(&package_config_path),
             }
         }
@@ -93,8 +100,7 @@ fn main() {
     );
 
     let status = Command::new("cmake")
-        .arg("--workflow")
-        .arg(format!("--preset={}", build_details.cmake_preset_workflow))
+        .arg(format!("--preset={}", build_details.cmake_config_preset))
         .arg(format!("-DCMAKE_INSTALL_PREFIX={}", cmake_install_dir))
         .arg(format!("-DVCPKG_INSTALLED_DIR={}", vcpkg_install_dir))
         .current_dir(&workspace_root)
@@ -103,6 +109,13 @@ fn main() {
     if !status.success() {
         panic!("cmake configure failed");
     }
+
+    let status = Command::new("cmake")
+        .arg("--build")
+        .arg(format!("--preset={}", build_details.cmake_build_preset))
+        .current_dir(&workspace_root)
+        .status()
+        .expect("failed to run cmake build");
 
     // The bindgen::Builder is the main entry point
     // to bindgen, and lets you build up options for
