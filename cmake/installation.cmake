@@ -304,6 +304,36 @@ function(generate_pkgconfig target)
     list(REMOVE_DUPLICATES release_dirs)
     list(REMOVE_DUPLICATES include_dirs)
 
+    # Sanitize library name lists: if any entry looks like a path (for
+    # example because a caller passed a raw directory or an incorrectly
+    # formed -l token), move it into the corresponding dirs list so we
+    # don't emit "-lC:/..." later. This keeps the generated pkg-config
+    # safe for consumers that expect -l<name> and -L<path> tokens.
+    set(_sanitized_debug_libs "")
+
+    foreach(_n IN LISTS debug_libs)
+        if(_n MATCHES "^.*/.*" OR _n MATCHES "^[A-Za-z]:.*")
+            # treat as directory
+            list(APPEND debug_dirs "${_n}")
+        else()
+            list(APPEND _sanitized_debug_libs "${_n}")
+        endif()
+    endforeach()
+
+    set(debug_libs "${_sanitized_debug_libs}")
+
+    set(_sanitized_release_libs "")
+
+    foreach(_n IN LISTS release_libs)
+        if(_n MATCHES "^.*/.*" OR _n MATCHES "^[A-Za-z]:.*")
+            list(APPEND release_dirs "${_n}")
+        else()
+            list(APPEND _sanitized_release_libs "${_n}")
+        endif()
+    endforeach()
+
+    set(release_libs "${_sanitized_release_libs}")
+
     # For shared main targets ensure debug .pc references the main
     # import library and conventional install lib directories so the
     # pkg-config probe can resolve the import library at link time.
@@ -411,6 +441,54 @@ function(generate_pkgconfig target)
 
     _emit_l(_libs_debug "${debug_libs}")
     _emit_l(_libs_release "${release_libs}")
+
+    # Additional safety: If any generated -l tokens accidentally contain
+    # path-like values (for example due to importer properties or
+    # previously computed list entries), move those into the corresponding
+    # dirs lists and rebuild the -L lists. This prevents emitting
+    # "-lC:/..." in the pkg-config output which confuses pkg-config
+    # consumers.
+    if(NOT _libs_debug STREQUAL "")
+        # split the space-separated string into list for inspection
+        string(REGEX MATCHALL "[^ ]+" _dbg_tokens "${_libs_debug}")
+        set(_filtered_dbg_tokens "")
+
+        foreach(_tok IN LISTS _dbg_tokens)
+            if(_tok MATCHES "^-l(.*/.*)$" OR _tok MATCHES "^-l([A-Za-z]:.*)$")
+                # strip leading -l and add as a dir entry (normalize slashes)
+                string(REGEX REPLACE "^-l" "" _maybe_dir "${_tok}")
+                file(TO_CMAKE_PATH "${_maybe_dir}" _maybe_dir)
+                append_to_list_if_not_found(debug_dirs "${_maybe_dir}")
+            else()
+                list(APPEND _filtered_dbg_tokens "${_tok}")
+            endif()
+        endforeach()
+
+        string(REPLACE ";" " " _joined_dbg "${_filtered_dbg_tokens}")
+        set(_libs_debug "${_joined_dbg}")
+    endif()
+
+    if(NOT _libs_release STREQUAL "")
+        string(REGEX MATCHALL "[^ ]+" _rel_tokens "${_libs_release}")
+        set(_filtered_rel_tokens "")
+
+        foreach(_tok IN LISTS _rel_tokens)
+            if(_tok MATCHES "^-l(.*/.*)$" OR _tok MATCHES "^-l([A-Za-z]:.*)$")
+                string(REGEX REPLACE "^-l" "" _maybe_dir "${_tok}")
+                file(TO_CMAKE_PATH "${_maybe_dir}" _maybe_dir)
+                append_to_list_if_not_found(release_dirs "${_maybe_dir}")
+            else()
+                list(APPEND _filtered_rel_tokens "${_tok}")
+            endif()
+        endforeach()
+
+        string(REPLACE ";" " " _joined_rel "${_filtered_rel_tokens}")
+        set(_libs_release "${_joined_rel}")
+    endif()
+
+    # Recompute -L lists now that we've possibly mutated the dirs lists
+    _emit_L(_libpaths_debug "${debug_dirs}")
+    _emit_L(_libpaths_release "${release_dirs}")
 
     # If we intentionally omitted transitive debug deps for a shared main
     # target, prefer the main-target-only libpaths/libs computed earlier

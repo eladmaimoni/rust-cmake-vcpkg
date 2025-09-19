@@ -165,22 +165,97 @@ fn main() {
         env::set_var("PKG_CONFIG_LIBDIR", pkgconfig_dir.as_os_str());
     }
 
-    match pkg_config::Config::new().probe("by2") {
+    // Disable direct cargo metadata emission from the pkg-config crate so
+    // we can inspect and sanitize probe results before printing cargo: lines.
+    match pkg_config::Config::new()
+        .cargo_metadata(false)
+        .env_metadata(false)
+        .probe("by2")
+    {
         Ok(library) => {
+            // Dump the raw probe result for debugging so we can see exactly
+            // what the pkg-config crate returned (including any prefixes
+            // like "dylib=..." or absolute paths).
             println!("cargo:warning=pkg-config probe succeeded: {:#?}", library);
+            println!("cargo:warning=RAW link_paths: {:?}", library.link_paths);
+            println!("cargo:warning=RAW libs: {:?}", library.libs);
             // Emit link search dirs and link libs. The pkg-config crate gives us
             // the necessary link paths and lib names already resolved.
+            // Emit link search dirs (deduplicated)
+            let mut emitted_paths = std::collections::HashSet::new();
             for path in library.link_paths {
                 let p = path.to_string_lossy().replace("\\", "/");
-                println!("cargo:warning=link path: {}", p);
-                println!("cargo:rustc-link-search=native={}", p);
+                if emitted_paths.insert(p.clone()) {
+                    println!("cargo:warning=link path: {}", p);
+                    println!("cargo:rustc-link-search=native={}", p);
+                }
             }
+
+            // Emit libs. Sometimes pkg-config entries can be malformed or
+            // include absolute paths or "kind=name" tokens. Avoid passing
+            // absolute paths to rustc's `-l` option (which expects a
+            // library name). If we detect a path-like token, add it as a
+            // link-search dir instead. If we detect a "kind=name" token
+            // (e.g. "dylib=foo"), split and validate the name portion.
+            let mut emitted_libs = std::collections::HashSet::new();
             for lib in library.libs {
-                println!("cargo:warning=link lib: {}", lib);
-                if build_profile == "debug" {
-                    println!("cargo:rustc-link-lib=dylib={}", lib);
-                } else {
-                    println!("cargo:rustc-link-lib=static={}", lib);
+                let lib_s = lib.replace("\\", "/");
+
+                // Print the debug escaped form so we can spot weird tokens.
+                println!("cargo:warning=lib token raw: {:?}", lib_s);
+
+                // If the token contains an equals sign treat it as kind=name
+                // and split it. Validate the name doesn't look like a path.
+                if lib_s.contains('=') {
+                    let mut parts = lib_s.splitn(2, '=');
+                    let kind = parts.next().unwrap_or("");
+                    let name = parts.next().unwrap_or("");
+                    let name = name.trim();
+                    if name.contains('/') || name.contains(':') {
+                        // name looks like a path; promote to link-search
+                        if emitted_paths.insert(name.to_string()) {
+                            println!(
+                                "cargo:warning=lib token kind=name with path; adding to link search: {}",
+                                name
+                            );
+                            println!("cargo:rustc-link-search=native={}", name);
+                        }
+                        continue;
+                    }
+                    if emitted_libs.insert(name.to_string()) {
+                        println!("cargo:warning=link lib (kind={}): {}", kind, name);
+                        if build_profile == "debug" {
+                            // Always prefer dynamic in debug profile for the
+                            // import library semantics on Windows.
+                            println!("cargo:rustc-link-lib=dylib={}", name);
+                        } else {
+                            println!("cargo:rustc-link-lib=static={}", name);
+                        }
+                    }
+                    continue;
+                }
+
+                // If the token looks like a path (contains a slash or a
+                // Windows drive specifier), treat it as a directory and add
+                // it to the search path instead of passing it to `-l`.
+                if lib_s.contains('/') || lib_s.contains(':') {
+                    if emitted_paths.insert(lib_s.clone()) {
+                        println!(
+                            "cargo:warning=lib token looks like path, adding to link search: {}",
+                            lib_s
+                        );
+                        println!("cargo:rustc-link-search=native={}", lib_s);
+                    }
+                    continue;
+                }
+
+                if emitted_libs.insert(lib_s.clone()) {
+                    println!("cargo:warning=link lib: {}", lib_s);
+                    if build_profile == "debug" {
+                        println!("cargo:rustc-link-lib=dylib={}", lib_s);
+                    } else {
+                        println!("cargo:rustc-link-lib=static={}", lib_s);
+                    }
                 }
             }
         }
