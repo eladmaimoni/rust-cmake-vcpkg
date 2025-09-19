@@ -117,13 +117,17 @@ fn main() {
         .status()
         .expect("failed to run cmake build");
 
+    if !status.success() {
+        panic!("cmake configure failed");
+    }
+    let include_dir = cmake_install_dir.to_string() + "/include";
     // The bindgen::Builder is the main entry point
     // to bindgen, and lets you build up options for
     // the resulting bindings.
     let bindings = bindgen::Builder::default()
         // The input header we would like to generate
         // bindings for.
-        .header("include/by2.h")
+        .header(format!("{}/by2/by2.h", include_dir))
         // Tell cargo to invalidate the built crate whenever any of the
         // included header files changed.
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
