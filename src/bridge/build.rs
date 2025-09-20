@@ -63,14 +63,12 @@ fn get_workspace_root() -> PathBuf {
 
     // Determine workspace root (two levels up from this crate: .../src/app)
     // let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let workspace_root = current_directory
+    current_directory
         .parent()
         .unwrap()
         .parent()
         .unwrap()
-        .to_path_buf();
-
-    workspace_root
+        .to_path_buf()
 }
 
 fn main() {
@@ -351,25 +349,25 @@ fn main() {
         if let Ok(entries) = std::fs::read_dir(&bin) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if let Some(ext) = path.extension() {
-                    if ext.to_string_lossy().eq_ignore_ascii_case("dll") {
-                        let file_name = path.file_name().unwrap();
-                        let dest = runtime_deps_dir.join(file_name);
-                        // Copy the DLL to the runtime deps dir
-                        if let Err(e) = std::fs::copy(&path, &dest) {
-                            println!(
-                                "cargo:warning=Failed to copy DLL {} -> {}: {}",
-                                path.display(),
-                                dest.display(),
-                                e
-                            );
-                        } else {
-                            println!(
-                                "cargo:warning=Copied DLL {} -> {}",
-                                path.display(),
-                                dest.display()
-                            );
-                        }
+                if let Some(ext) = path.extension()
+                    && ext.to_string_lossy().eq_ignore_ascii_case("dll")
+                {
+                    let file_name = path.file_name().unwrap();
+                    let dest = runtime_deps_dir.join(file_name);
+                    // Copy the DLL to the runtime deps dir
+                    if let Err(e) = std::fs::copy(&path, &dest) {
+                        println!(
+                            "cargo:warning=Failed to copy DLL {} -> {}: {}",
+                            path.display(),
+                            dest.display(),
+                            e
+                        );
+                    } else {
+                        println!(
+                            "cargo:warning=Copied DLL {} -> {}",
+                            path.display(),
+                            dest.display()
+                        );
                     }
                 }
             }
