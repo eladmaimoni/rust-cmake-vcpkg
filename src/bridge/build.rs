@@ -109,6 +109,15 @@ fn main() {
 
     println!("cargo:rerun-if-changed=build.rs");
 
+    // Ensure the build script is re-run whenever any file under src/by2
+
+    // Watch the by2 and ccore source trees in the workspace so changes there
+    // will cause the bridge crate to rebuild.
+    let by2_dir = workspace_root.join("src").join("by2");
+    let ccore_dir = workspace_root.join("src").join("ccore");
+    println!("cargo:rerun-if-changed={}", by2_dir.display());
+    println!("cargo:rerun-if-changed={}", ccore_dir.display());
+
     let cmake_install_dir = out_dir.to_string() + "/" + CMAKE_INSTALLED_DIR;
     let vcpkg_install_dir = out_dir.to_string() + "/" + VCPKG_INSTALLED_DIR;
 
