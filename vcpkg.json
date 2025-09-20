@@ -1,7 +1,7 @@
 {
     "name": "by2",
     "version-string": "1.0.0",
-    "builtin-baseline": "3704806ffed769fc3260b2ef7fd39b8b65f638ea",
+    "builtin-baseline": "29ff5b8131d0c6c8fcb8fbaef35992f0d507cd7c",
     "dependencies": [
         "eigen3",
         "spdlog"
