@@ -61,7 +61,7 @@ fn deduce_build_details(target_os: &str, _target_arch: &str, build_profile: &str
                         "debug/lib/pkgconfig/by2.pc",
                     ),
                     "release" => (
-                        "clang-20-release-install",
+                        "clang-20-release",
                         "clang-20-release-install",
                         "lib/pkgconfig/by2.pc",
                     ),
