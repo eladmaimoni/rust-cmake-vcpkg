@@ -1,6 +1,13 @@
+use bridge::by2_add_safe;
+
 #[flutter_rust_bridge::frb(sync)] // Synchronous mode for simplicity of the demo
 pub fn greet(name: String) -> String {
     format!("Hello, {name}!")
+}
+
+#[flutter_rust_bridge::frb(sync)] // Synchronous mode for simplicity of the demo
+pub fn add(a: i32, b: i32) -> i32 {
+    by2_add_safe(a, b)
 }
 
 #[flutter_rust_bridge::frb(init)]
