@@ -46,6 +46,18 @@
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "RelWithDebInfo"
             }
+        },
+        {
+            "name": "clang-20-debug",
+            "inherits": [
+                "basic_paths",
+                "vcpkg",
+                "clang-20",
+                "ninja"
+            ],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
         }
     ],
     "buildPresets": [
@@ -112,6 +124,14 @@
         {
             "name": "clang-20-release-install",
             "configurePreset": "clang-20-release",
+            "jobs": 0,
+            "targets": [
+                "install"
+            ]
+        },
+        {
+            "name": "clang-20-debug-install",
+            "configurePreset": "clang-20-debug",
             "jobs": 0,
             "targets": [
                 "install"
