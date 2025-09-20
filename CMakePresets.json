@@ -19,8 +19,7 @@
                 "msvc143-x64-md"
             ],
             "generator": "Visual Studio 17 2022",
-            "cacheVariables": {
-            }
+            "cacheVariables": {}
         },
         {
             "name": "msvc-mt",
@@ -35,7 +34,19 @@
             "cacheVariables": {
                 "BY2_SHARED": "ON"
             }
-        }
+        },
+        {
+            "name": "clang-20-release",
+            "inherits": [
+                "basic_paths",
+                "vcpkg",
+                "clang-20",
+                "ninja"
+            ],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+            }
+        },
     ],
     "buildPresets": [
         {
@@ -98,12 +109,8 @@
                 "install"
             ]
         }
-        
-        
-
     ],
-    "testPresets": [
-    ],
+    "testPresets": [],
     "workflowPresets": [
         {
             "name": "windows-release-install",

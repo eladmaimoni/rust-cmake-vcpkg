@@ -15,6 +15,15 @@
             }
         },
         {
+            "name": "ninja",
+            "description": "Sets Ninja, tells ninja to export compile database (compile_commands.json)",
+            "hidden": true,
+            "cacheVariables": {
+                "CMAKE_EXPORT_COMPILE_COMMANDS": true
+            },
+            "generator": "Ninja"
+        },
+        {
             "name": "vcpkg",
             "description": "configures vcpkg and install directories",
             "hidden": true,
