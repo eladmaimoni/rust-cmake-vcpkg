@@ -146,11 +146,9 @@ fn main() {
         // The input header we would like to generate
         // bindings for.
         .header(format!("{}/by2/by2.h", include_dir))
-        // Suppress non-CamelCase type lint warnings emitted for C type
-        // aliases such as `intmax_t`. Use an outer attribute so the
-        // generated file can be included as a module without causing an
-        // "inner attribute is not permitted" error.
-        .raw_line("#[allow(non_camel_case_types)]")
+        // Attributes for the generated bindings are applied in the
+        // surrounding module (src/bridge/src/lib.rs). Avoid emitting
+        // attributes here to keep the generated file as a plain include.
         // Tell cargo to invalidate the built crate whenever any of the
         // included header files changed.
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
