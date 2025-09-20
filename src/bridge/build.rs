@@ -52,6 +52,29 @@ fn deduce_build_details(target_os: &str, _target_arch: &str, build_profile: &str
                 cmake_build_preset,
             }
         }
+        "linux" => {
+            let (cmake_config_preset, cmake_build_preset, _package_config_path) =
+                match build_profile {
+                    "debug" => (
+                        "clang-20-debug",
+                        "clang-20-debug-install",
+                        "debug/lib/pkgconfig/by2.pc",
+                    ),
+                    "release" => (
+                        "clang-20-release-install",
+                        "clang-20-release-install",
+                        "lib/pkgconfig/by2.pc",
+                    ),
+                    _ => {
+                        panic!("Unsupported build profile: {}", build_profile);
+                    }
+                };
+
+            BuildDetails {
+                cmake_config_preset,
+                cmake_build_preset,
+            }
+        }
         _ => {
             panic!("Unsupported target OS: {}", target_os);
         }
