@@ -196,7 +196,7 @@ fn main() {
         Ok(library) => {
             // Deduplicate and emit link search dirs
             let mut emitted_paths = std::collections::HashSet::new();
-            for path in library.link_paths {
+            for path in &library.link_paths {
                 let p = path.to_string_lossy().replace("\\", "/");
                 if emitted_paths.insert(p.clone()) {
                     println!("cargo:rustc-link-search=native={}", p);
@@ -204,31 +204,59 @@ fn main() {
             }
 
             // Process libs: promote path-like tokens to -L, otherwise emit -l
+            // For non-path tokens, decide static vs dynamic linking by
+            // checking whether a static archive exists in the probe's
+            // link_paths. This avoids requesting static linking for
+            // system libraries like libstdc++ when a static archive is
+            // not available on the system.
             let mut emitted_libs = std::collections::HashSet::new();
-            for lib in library.libs {
+            for lib in &library.libs {
                 let lib_s = lib.replace("\\", "/");
                 // kind=name -> split
                 let name = if lib_s.contains('=') {
                     let mut parts = lib_s.splitn(2, '=');
                     parts.next();
-                    parts.next().unwrap_or("").trim()
+                    parts.next().unwrap_or("").trim().to_string()
                 } else {
-                    lib_s.as_str()
+                    lib_s.to_string()
                 };
 
                 // If name looks like a path, add to link search
                 if name.contains('/') || name.contains(':') {
-                    if emitted_paths.insert(name.to_string()) {
+                    if emitted_paths.insert(name.clone()) {
                         println!("cargo:rustc-link-search=native={}", name);
                     }
                     continue;
                 }
 
-                if emitted_libs.insert(name.to_string()) {
+                if emitted_libs.insert(name.clone()) {
+                    // Determine whether a static archive exists under any of the
+                    // pkg-config link paths. On Windows look for <name>.lib, on
+                    // Unix look for lib<name>.a. If found, prefer static for
+                    // release builds; otherwise fall back to dynamic linking.
+                    let mut has_static = false;
+                    for path in &library.link_paths {
+                        let candidate = if cfg!(target_os = "windows") {
+                            path.join(format!("{}.lib", name))
+                        } else {
+                            path.join(format!("lib{}.a", name))
+                        };
+                        if candidate.exists() {
+                            has_static = true;
+                            break;
+                        }
+                    }
+
                     if build_profile == "debug" {
                         println!("cargo:rustc-link-lib=dylib={}", name);
                     } else {
-                        println!("cargo:rustc-link-lib=static={}", name);
+                        if has_static {
+                            println!("cargo:rustc-link-lib=static={}", name);
+                        } else {
+                            // Fall back to dynamic linking when static archive
+                            // isn't available (e.g. system stdc++).
+                            println!("cargo:rustc-link-lib=dylib={}", name);
+                        }
                     }
                 }
             }

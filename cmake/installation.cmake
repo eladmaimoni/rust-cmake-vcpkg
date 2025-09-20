@@ -247,6 +247,21 @@ function(generate_pkgconfig target)
     list(REMOVE_DUPLICATES release_dirs)
     list(REMOVE_DUPLICATES include_dirs)
 
+    # Include implicit C/C++ runtime libraries (e.g. -lstdc++ or -lc++) so
+    # consumers that link C++ static/shared archives also get the required
+    # standard library on platforms like Linux. This pulls tokens from
+    # CMAKE_CXX_IMPLICIT_LINK_LIBRARIES and appends the -l names to the
+    # exported debug/release libs lists.
+    if(DEFINED CMAKE_CXX_IMPLICIT_LINK_LIBRARIES)
+        string(REGEX MATCHALL "-l[^ \t\n]+" _implicit_list "${CMAKE_CXX_IMPLICIT_LINK_LIBRARIES}")
+
+        foreach(_tok IN LISTS _implicit_list)
+            string(REGEX REPLACE "^-l" "" _libname "${_tok}")
+            append_to_list_if_not_found(debug_libs "${_libname}")
+            append_to_list_if_not_found(release_libs "${_libname}")
+        endforeach()
+    endif()
+
     # Build space-separated -L/-l strings (no filesystem probing)
     string(CONCAT _libpaths_debug "")
 
@@ -270,17 +285,44 @@ function(generate_pkgconfig target)
 
     foreach(n IN LISTS debug_libs)
         if(NOT n STREQUAL "")
-            string(APPEND _libs_debug "-l${n} ")
+            # If the library filename starts with the conventional "lib" prefix
+            # (e.g. libspdlog.a) strip it when emitting -l<name> so pkg-config
+            # consumers see -lspdlog rather than -llibspdlog which is invalid.
+            string(REGEX REPLACE "^lib(.+)" "\\1" _n_stripped "${n}")
+            string(APPEND _libs_debug "-l${_n_stripped} ")
         endif()
     endforeach()
+
+    # On Linux, static C++ libraries may require linking the C++ standard
+    # library. Ensure we export -lstdc++ (or -lc++ if already referenced)
+    # so consumers that use the .pc file link correctly. Don't duplicate
+    # if already present.
+    if(UNIX AND NOT APPLE AND NOT WIN32)
+        string(FIND "${_libs_debug}" "stdc++" _found_stdcpp)
+        string(FIND "${_libs_debug}" "c++" _found_cxx)
+
+        if(_found_stdcpp EQUAL -1 AND _found_cxx EQUAL -1)
+            string(APPEND _libs_debug "-lstdc++ ")
+        endif()
+    endif()
 
     string(CONCAT _libs_release "")
 
     foreach(n IN LISTS release_libs)
         if(NOT n STREQUAL "")
-            string(APPEND _libs_release "-l${n} ")
+            string(REGEX REPLACE "^lib(.+)" "\\1" _n_stripped "${n}")
+            string(APPEND _libs_release "-l${_n_stripped} ")
         endif()
     endforeach()
+
+    if(UNIX AND NOT APPLE AND NOT WIN32)
+        string(FIND "${_libs_release}" "stdc++" _found_stdcpp_rel)
+        string(FIND "${_libs_release}" "c++" _found_cxx_rel)
+
+        if(_found_stdcpp_rel EQUAL -1 AND _found_cxx_rel EQUAL -1)
+            string(APPEND _libs_release "-lstdc++ ")
+        endif()
+    endif()
 
     # Normalize include dirs into _cflags (skip generator expressions)
     set(_cflags "")
