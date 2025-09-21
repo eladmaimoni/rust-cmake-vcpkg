@@ -12,9 +12,29 @@ struct BuildDetails {
     cmake_build_preset: &'static str,
 }
 
-fn deduce_build_details(target_os: &str, _target_arch: &str, build_profile: &str) -> BuildDetails {
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
+enum TargetOS {
+    Windows,
+    Linux,
+    MacOS,
+}
+
+fn deduce_target_os(target_os: &str) -> TargetOS {
     match target_os {
-        "windows" => {
+        "windows" => TargetOS::Windows,
+        "linux" => TargetOS::Linux,
+        "macos" => TargetOS::MacOS,
+        _ => panic!("Unsupported target OS: {}", target_os),
+    }
+}
+
+fn deduce_build_details(
+    target_os: TargetOS,
+    _target_arch: &str,
+    build_profile: &str,
+) -> BuildDetails {
+    match target_os {
+        TargetOS::Windows => {
             // NOTE: The C/C++ objects produced by the cxx crate and its build
             // infrastructure are typically compiled with the release CRT
             // settings. Mixing MSVC debug CRT (MDd) and release CRT (MD) will
@@ -52,7 +72,7 @@ fn deduce_build_details(target_os: &str, _target_arch: &str, build_profile: &str
                 cmake_build_preset,
             }
         }
-        "linux" => {
+        TargetOS::Linux => {
             let (cmake_config_preset, cmake_build_preset, _package_config_path) =
                 match build_profile {
                     "debug" => (
@@ -76,7 +96,7 @@ fn deduce_build_details(target_os: &str, _target_arch: &str, build_profile: &str
             }
         }
         _ => {
-            panic!("Unsupported target OS: {}", target_os);
+            panic!("Unsupported target OS: {:?}", target_os);
         }
     }
 }
@@ -96,15 +116,16 @@ fn get_workspace_root() -> PathBuf {
 
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap().replace('\\', "/");
-    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
+    let target_os = deduce_target_os(&std::env::var("CARGO_CFG_TARGET_OS").unwrap());
     let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
     let build_profile = std::env::var("PROFILE").unwrap();
 
-    let build_details = deduce_build_details(&target_os, &target_arch, &build_profile);
+    let build_details = deduce_build_details(target_os, &target_arch, &build_profile);
     let workspace_root = get_workspace_root();
 
     println!(
-        "cargo:warning=Building for OS={target_os}, ARCH={target_arch}, PROFILE={build_profile}, out_dir={out_dir}"
+        "cargo:warning=Building for OS={:?}, ARCH={}, PROFILE={}, out_dir={}",
+        target_os, target_arch, build_profile, out_dir
     );
 
     println!("cargo:rerun-if-changed=build.rs");
@@ -202,10 +223,10 @@ fn main() {
     {
         Ok(library) => {
             // Deduplicate and emit link search dirs
-            let mut emitted_paths = std::collections::HashSet::new();
+            let mut emitted_link_search_paths = std::collections::HashSet::new();
             for path in &library.link_paths {
                 let p = path.to_string_lossy().replace("\\", "/");
-                if emitted_paths.insert(p.clone()) {
+                if emitted_link_search_paths.insert(p.clone()) {
                     println!("cargo:rustc-link-search=native={}", p);
                 }
             }
@@ -218,32 +239,33 @@ fn main() {
             // not available on the system.
             let mut emitted_libs = std::collections::HashSet::new();
             for lib in &library.libs {
-                let lib_s = lib.replace("\\", "/");
-                // kind=name -> split
-                let name = if lib_s.contains('=') {
-                    let mut parts = lib_s.splitn(2, '=');
-                    parts.next();
-                    parts.next().unwrap_or("").trim().to_string()
-                } else {
-                    lib_s.to_string()
-                };
+                // let lib_s = lib.replace("\\", "/");
+                // // kind=name -> split
+                // let name = if lib_s.contains('=') {
+                //     let mut parts = lib_s.splitn(2, '=');
+                //     parts.next();
+                //     parts.next().unwrap_or("").trim().to_string()
+                // } else {
+                //     lib_s.to_string()
+                // };
 
-                // If name looks like a path, add to link search
-                if name.contains('/') || name.contains(':') {
-                    if emitted_paths.insert(name.clone()) {
-                        println!("cargo:rustc-link-search=native={}", name);
-                    }
-                    continue;
-                }
-
+                // // If name looks like a path, add to link search
+                // if name.contains('/') || name.contains(':') {
+                //     if emitted_link_search_paths.insert(name.clone()) {
+                //         println!("cargo:rustc-link-search=native={}", name);
+                //     }
+                //     continue;
+                // }
+                let name = lib.to_string();
                 if emitted_libs.insert(name.clone()) {
                     // Determine whether a static archive exists under any of the
                     // pkg-config link paths. On Windows look for <name>.lib, on
                     // Unix look for lib<name>.a. If found, prefer static for
                     // release builds; otherwise fall back to dynamic linking.
                     let mut has_static = false;
-                    for path in &library.link_paths {
-                        let candidate = if cfg!(target_os = "windows") {
+                    for search_path in &emitted_link_search_paths {
+                        let path = PathBuf::from(search_path);
+                        let candidate = if target_os == TargetOS::Windows {
                             path.join(format!("{}.lib", name))
                         } else {
                             path.join(format!("lib{}.a", name))
@@ -256,14 +278,12 @@ fn main() {
 
                     if build_profile == "debug" {
                         println!("cargo:rustc-link-lib=dylib={}", name);
+                    } else if has_static {
+                        println!("cargo:rustc-link-lib=static={}", name);
                     } else {
-                        if has_static {
-                            println!("cargo:rustc-link-lib=static={}", name);
-                        } else {
-                            // Fall back to dynamic linking when static archive
-                            // isn't available (e.g. system stdc++).
-                            println!("cargo:rustc-link-lib=dylib={}", name);
-                        }
+                        // Fall back to dynamic linking when static archive
+                        // isn't available (e.g. system stdc++).
+                        println!("cargo:rustc-link-lib=dylib={}", name);
                     }
                 }
             }
@@ -271,84 +291,6 @@ fn main() {
         Err(e) => {
             println!("cargo:warning=pkg-config probe failed: {}", e);
             panic!("pkg-config probe failed: {}", e);
-
-            //     if let Ok(contents) = std::fs::read_to_string(&package_config_path) {
-            //         // Manual parsing preserved from previous version
-            //         let mut link_paths: Vec<String> = Vec::new();
-            //         let mut libs: Vec<String> = Vec::new();
-
-            //         for line in contents.lines() {
-            //             if line.starts_with("Libs:") {
-            //                 let rest = line.trim_start_matches("Libs:").trim();
-            //                 for token in rest.split_whitespace() {
-            //                     if token.starts_with("-L") {
-            //                         let mut path = token.trim_start_matches("-L").to_string();
-            //                         if path.contains("${prefix}") {
-            //                             path = path.replace("${prefix}", &cmake_install_dir);
-            //                         }
-            //                         if path.contains("${libdir}") {
-            //                             let libdir = if build_profile == "debug" {
-            //                                 format!("{}/debug/lib", cmake_install_dir)
-            //                             } else {
-            //                                 format!("{}/lib", cmake_install_dir)
-            //                             };
-            //                             path = path.replace("${libdir}", &libdir);
-            //                         }
-            //                         let path = path.replace("\\", "/");
-            //                         link_paths.push(path.clone());
-            //                     } else if token.starts_with("-l") {
-            //                         let lib = token.trim_start_matches("-l").to_string();
-            //                         libs.push(lib);
-            //                     }
-            //                 }
-            //             }
-            //         }
-
-            //         let fallback_lib = format!("{}/lib", cmake_install_dir).replace("\\", "/");
-            //         let fallback_debug_lib =
-            //             format!("{}/debug/lib", cmake_install_dir).replace("\\", "/");
-            //         link_paths.push(fallback_lib.clone());
-            //         link_paths.push(fallback_debug_lib.clone());
-
-            //         let mut emitted = std::collections::HashSet::new();
-            //         for p in &link_paths {
-            //             if emitted.insert(p.clone()) {
-            //                 println!("cargo:warning=link path: {}", p);
-            //                 println!("cargo:rustc-link-search=native={}", p);
-            //             }
-            //         }
-
-            //         for lib in &libs {
-            //             println!("cargo:warning=link lib: {}", lib);
-            //             let filename = format!("{}.lib", lib);
-            //             let mut found = false;
-            //             for p in &link_paths {
-            //                 let candidate = Path::new(p).join(&filename);
-            //                 if candidate.exists() {
-            //                     found = true;
-            //                     break;
-            //                 }
-            //             }
-            //             if !found {
-            //                 println!(
-            //                     "cargo:warning=Skipping link for '{}': {} not found in link paths",
-            //                     lib, filename
-            //                 );
-            //                 continue;
-            //             }
-            //             if build_profile == "debug" {
-            //                 println!("cargo:rustc-link-lib=dylib={}", lib);
-            //             } else {
-            //                 println!("cargo:rustc-link-lib=static={}", lib);
-            //             }
-            //         }
-            //     }
-            // } else {
-            //     println!(
-            //         "cargo:warning=Pkg-config file not found at {}",
-            //         package_config_path.display()
-            //     );
-            // }
         }
     }
 
