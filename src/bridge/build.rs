@@ -298,24 +298,24 @@ fn main() {
     // linker can find import/static libraries regardless of how the pkg-config
     // file was generated. This helps when the import library (by2.lib) is
     // placed in `${prefix}/lib` while the pkg-config references `${prefix}/debug/lib`.
-    let fallback_lib = format!("{}/lib", cmake_install_dir);
-    let fallback_debug_lib = format!("{}/debug/lib", cmake_install_dir);
-    println!(
-        "cargo:warning=Adding fallback link search: {}",
-        fallback_lib
-    );
-    println!(
-        "cargo:rustc-link-search=native={}",
-        fallback_lib.replace("\\", "/")
-    );
-    println!(
-        "cargo:warning=Adding fallback link search: {}",
-        fallback_debug_lib
-    );
-    println!(
-        "cargo:rustc-link-search=native={}",
-        fallback_debug_lib.replace("\\", "/")
-    );
+    // let fallback_lib = format!("{}/lib", cmake_install_dir);
+    // let fallback_debug_lib = format!("{}/debug/lib", cmake_install_dir);
+    // println!(
+    //     "cargo:warning=Adding fallback link search: {}",
+    //     fallback_lib
+    // );
+    // println!(
+    //     "cargo:rustc-link-search=native={}",
+    //     fallback_lib.replace("\\", "/")
+    // );
+    // println!(
+    //     "cargo:warning=Adding fallback link search: {}",
+    //     fallback_debug_lib
+    // );
+    // println!(
+    //     "cargo:rustc-link-search=native={}",
+    //     fallback_debug_lib.replace("\\", "/")
+    // );
 
     // Copy any installed DLLs into the test runtime directory so the
     // test harness can find them at runtime. On Windows the loader looks
@@ -342,6 +342,12 @@ fn main() {
         );
     }
 
+    /*
+    links regarding dll search path:
+    https://doc.rust-lang.org/cargo/reference/build-scripts.html#rustc-link-search
+    https://doc.rust-lang.org/cargo/reference/environment-variables.html#dynamic-library-paths
+
+     */
     for bin in bin_dirs {
         if !bin.exists() {
             continue;
