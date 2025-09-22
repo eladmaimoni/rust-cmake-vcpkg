@@ -114,6 +114,24 @@ fn get_workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
+// Credit to ssrlive for this function
+// Taken from the following issue: https://github.com/rust-lang/cargo/issues/9661#issuecomment-1722358176
+fn get_cargo_target_dir() -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
+    let out_dir = std::path::PathBuf::from(std::env::var("OUT_DIR")?);
+    let profile = std::env::var("PROFILE")?;
+    let mut target_dir = None;
+    let mut sub_path = out_dir.as_path();
+    while let Some(parent) = sub_path.parent() {
+        if parent.ends_with(&profile) {
+            target_dir = Some(parent);
+            break;
+        }
+        sub_path = parent;
+    }
+    let target_dir = target_dir.ok_or("not found")?;
+    Ok(target_dir.to_path_buf())
+}
+
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap().replace('\\', "/");
     let target_os = deduce_target_os(&std::env::var("CARGO_CFG_TARGET_OS").unwrap());
@@ -259,10 +277,6 @@ fn main() {
                         }
                     }
 
-                    // if build_profile == "debug" {
-                    //   println!("cargo:rustc-link-lib=dylib={}", name);
-                    // else
-
                     if has_static {
                         println!("cargo:rustc-link-lib=static={}", name);
                     } else {
@@ -279,15 +293,23 @@ fn main() {
         }
     }
 
-    // Copy any installed DLLs into the test runtime directory so the
-    // test harness can find them at runtime. On Windows the loader looks
-    // in the executable directory and PATH. Cargo places test binaries
-    // under <workspace_root>/target/<profile>/deps so copy DLLs there.
-    let workspace_root = get_workspace_root();
-    let runtime_deps_dir = workspace_root
-        .join("target")
-        .join(&build_profile)
-        .join("deps");
+    /*
+    links regarding dll search path:
+    https://doc.rust-lang.org/cargo/reference/build-scripts.html#rustc-link-search
+    https://doc.rust-lang.org/cargo/reference/environment-variables.html#dynamic-library-paths
+
+
+    On windows debug builds, we can't link the debug crt dynamically and hence may conflict with rust's crt linkage.
+    To avoid this, windows debug builds result in a single dll with all dependencies statically linked, including the c++ runtime.
+
+    we copy any installed DLLs into the test runtime directory so the
+    test harness can find them at runtime. On Windows the loader looks
+    in the executable directory and PATH. Cargo places test binaries
+    under <workspace_root>/target/<profile>/deps so copy DLLs there.
+     */
+
+    let binary_dir = get_cargo_target_dir().unwrap();
+    let runtime_deps_dir = binary_dir.join("deps");
 
     // Common install bin directories to check
     let bin_dirs = vec![
@@ -304,12 +326,6 @@ fn main() {
         );
     }
 
-    /*
-    links regarding dll search path:
-    https://doc.rust-lang.org/cargo/reference/build-scripts.html#rustc-link-search
-    https://doc.rust-lang.org/cargo/reference/environment-variables.html#dynamic-library-paths
-
-     */
     for bin in bin_dirs {
         if !bin.exists() {
             continue;
@@ -320,54 +336,30 @@ fn main() {
                 if let Some(ext) = path.extension() {
                     if ext.to_string_lossy().eq_ignore_ascii_case("dll") {
                         let file_name = path.file_name().unwrap();
-                        let dest = runtime_deps_dir.join(file_name);
-                        // Copy the DLL to the runtime deps dir
-                        if let Err(e) = std::fs::copy(&path, &dest) {
+                        let dest1 = runtime_deps_dir.join(file_name);
+                        let dest2 = binary_dir.join(file_name);
+
+                        std::fs::copy(&path, &dest1).unwrap_or_else(|e| {
                             println!(
                                 "cargo:warning=Failed to copy DLL {} -> {}: {}",
                                 path.display(),
-                                dest.display(),
+                                dest1.display(),
                                 e
                             );
-                        } else {
+                            0
+                        });
+                        std::fs::copy(&path, &dest2).unwrap_or_else(|e| {
                             println!(
-                                "cargo:warning=Copied DLL {} -> {}",
+                                "cargo:warning=Failed to copy DLL {} -> {}: {}",
                                 path.display(),
-                                dest.display()
+                                dest1.display(),
+                                e
                             );
-                        }
+                            0
+                        });
                     }
                 }
             }
         }
     }
-
-    // // Configure cxx build: include C++ headers from the ccore source dir and vcpkg include
-    // Configure cxx build: compile the cxx-generated glue so the bridge symbols
-    // (e.g. by2$cxxbridge1$ccore_add) are available at link time. We don't
-    // compile the ccore implementation here because it's provided by the CMake
-    // built/static library (installed/lib/...).
-    // let ccore_include = workspace_root.join("src").join("ccore");
-
-    // On Windows/MSVC ensure the cxx bridge is compiled with the same CRT and
-    // iterator-debug settings as the prebuilt C++ libraries produced by our
-    // CMake workflow. The CMake debug install uses MDd and _ITERATOR_DEBUG_LEVEL=2.
-    // We avoid forcing MSVC debug CRT flags here. The build maps CMake to
-    // produce Release/RelWithDebInfo install artifacts to keep CRT and
-    // iterator settings consistent across the C/C++ and Rust parts.
-
-    // Compile only the cxx-generated glue. The ccore symbols come from the
-    // prebuilt ccore.lib which we already tell rustc to link above.
-
-    // The cxx build produces a static library named `cxxbridge1` (and a
-    // corresponding import/static archive) in the build output directory. On
-    // Windows/MSVC the file is `cxxbridge1.lib`. Ensure rustc links it.
-    // println!("cargo:warning=Ensuring linker links the cxx bridge library: cxxbridge1");
-    // println!("cargo:rustc-link-lib=static=cxxbridge1");
-
-    // // Re-run build if the C++ header/source changes
-    // println!(
-    //     "cargo:rerun-if-changed={}",
-    //     workspace_root.join("src/ccore/ccore/ccore.hpp").display()
-    // );
 }
