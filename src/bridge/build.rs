@@ -239,23 +239,6 @@ fn main() {
             // not available on the system.
             let mut emitted_libs = std::collections::HashSet::new();
             for lib in &library.libs {
-                // let lib_s = lib.replace("\\", "/");
-                // // kind=name -> split
-                // let name = if lib_s.contains('=') {
-                //     let mut parts = lib_s.splitn(2, '=');
-                //     parts.next();
-                //     parts.next().unwrap_or("").trim().to_string()
-                // } else {
-                //     lib_s.to_string()
-                // };
-
-                // // If name looks like a path, add to link search
-                // if name.contains('/') || name.contains(':') {
-                //     if emitted_link_search_paths.insert(name.clone()) {
-                //         println!("cargo:rustc-link-search=native={}", name);
-                //     }
-                //     continue;
-                // }
                 let name = lib.to_string();
                 if emitted_libs.insert(name.clone()) {
                     // Determine whether a static archive exists under any of the
@@ -276,9 +259,11 @@ fn main() {
                         }
                     }
 
-                    if build_profile == "debug" {
-                        println!("cargo:rustc-link-lib=dylib={}", name);
-                    } else if has_static {
+                    // if build_profile == "debug" {
+                    //   println!("cargo:rustc-link-lib=dylib={}", name);
+                    // else
+
+                    if has_static {
                         println!("cargo:rustc-link-lib=static={}", name);
                     } else {
                         // Fall back to dynamic linking when static archive
@@ -293,29 +278,6 @@ fn main() {
             panic!("pkg-config probe failed: {}", e);
         }
     }
-
-    // Also add conventional install lib directories as fallback so the
-    // linker can find import/static libraries regardless of how the pkg-config
-    // file was generated. This helps when the import library (by2.lib) is
-    // placed in `${prefix}/lib` while the pkg-config references `${prefix}/debug/lib`.
-    // let fallback_lib = format!("{}/lib", cmake_install_dir);
-    // let fallback_debug_lib = format!("{}/debug/lib", cmake_install_dir);
-    // println!(
-    //     "cargo:warning=Adding fallback link search: {}",
-    //     fallback_lib
-    // );
-    // println!(
-    //     "cargo:rustc-link-search=native={}",
-    //     fallback_lib.replace("\\", "/")
-    // );
-    // println!(
-    //     "cargo:warning=Adding fallback link search: {}",
-    //     fallback_debug_lib
-    // );
-    // println!(
-    //     "cargo:rustc-link-search=native={}",
-    //     fallback_debug_lib.replace("\\", "/")
-    // );
 
     // Copy any installed DLLs into the test runtime directory so the
     // test harness can find them at runtime. On Windows the loader looks
