@@ -1,4 +1,4 @@
 
 [workspace]
-members = ["src/app", "src/bridge", "src/rcore"]
+members = ["src/app", "src/bridge", "src/rcore", "src/by2_api"]
 resolver = "3"
