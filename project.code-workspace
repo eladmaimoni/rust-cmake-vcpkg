@@ -1,0 +1,15 @@
+{
+  "folders": [
+    {"path" : "."},
+    { "path": "cpp" },
+    { "path": "rust" },
+    { "path": "flutter" }
+  ],
+  "settings": {
+    "files.exclude": {
+      "**/build": true,
+      "**/target": true,
+      "**/.dart_tool": true
+    }
+  }
+}
