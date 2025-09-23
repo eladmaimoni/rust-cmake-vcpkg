@@ -43,7 +43,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       home: Scaffold(
-        appBar: AppBar(title: const Text('flutter_rust_bridge quickstart 3')),
+        appBar: AppBar(title: const Text('flutter_rust_bridge quickstart 4')),
         body: Column(
           children: [
             // button to call Rust `add(2, 3)`
