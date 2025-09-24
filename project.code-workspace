@@ -1,0 +1,23 @@
+{
+  "folders": [
+    {
+      "path": "."
+    },
+    {
+      "path": "cpp"
+    },
+    {
+      "path": "rust"
+    },
+    {
+      "path": "flutter/by2_ui"
+    }
+  ],
+  "settings": {
+    // "files.exclude": {
+    //   "**/build": true,
+    //   "**/target": true,
+    //   "**/.dart_tool": true
+    // }
+  }
+}
