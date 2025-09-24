@@ -1,0 +1,5 @@
+# https://github.com/irondash/cargokit/blob/main/docs/architecture.md
+cargo:
+  debug: # Configuration of cargo execution during debug builds
+    extra_flags: # extra arguments passed to cargo build
+      - --release
